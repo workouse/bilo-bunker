@@ -1,0 +1,63 @@
+# ── Dependencies & Package Manager Stores ────────────────────────────────────
+node_modules/
+.pnpm-store/
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Build Outputs & Caches ───────────────────────────────────────────────────
+dist/
+build/
+packages/*/dist
+.wrangler/
+.cache/
+.turbo/
+.vite/
+*.tsbuildinfo
+
+# ── Database, Storage & Backups ──────────────────────────────────────────────
+data/
+backups/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# ── Environment & Secrets (Never Commit Credentials) ─────────────────────────
+.env
+.env.*
+!.env.example
+!.env.dist
+.envrc
+deploy.conf
+
+# ── Logs & System Files ───────────────────────────────────────────────────────
+*.log
+logs/
+.DS_Store
+.DS_Store?
+Thumbs.db
+Desktop.ini
+._*
+
+# ── Editor & IDE Configurations ──────────────────────────────────────────────
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# ── Docker & Testing Caches ──────────────────────────────────────────────────
+.docker/
+.vitest/
+coverage/
+.nyc_output/

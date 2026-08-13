@@ -1,0 +1,44 @@
+{
+  "name": "bilo-bunker-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multi-Tenant Nostr Remote Signer (NIP-46) & Management Dashboard built for Docker & Cloudflare Workers",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/workouse/bilo-bunker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/workouse/bilo-bunker/issues"
+  },
+  "homepage": "https://github.com/workouse/bilo-bunker#readme",
+  "keywords": [
+    "nostr",
+    "nip-46",
+    "bunker",
+    "remote-signer",
+    "caddy",
+    "auto-ssl",
+    "docker",
+    "cloudflare-workers"
+  ],
+  "scripts": {
+    "dev": "pnpm --parallel --recursive run dev",
+    "build": "pnpm --recursive run build",
+    "lint": "pnpm --recursive run lint",
+    "typecheck": "pnpm --recursive run typecheck",
+    "test": "pnpm --recursive run test",
+    "deploy": "pnpm --filter @bilo-bunker/app run deploy"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "license": "MIT"
+}
+

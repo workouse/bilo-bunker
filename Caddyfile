@@ -1,0 +1,18 @@
+{
+	# Email for Let's Encrypt / ZeroSSL TLS certificate registration
+	email {$CERTBOT_EMAIL}
+}
+
+# Serve primary domain (defaults to localhost if DOMAIN is unset)
+{$DOMAIN:localhost} {
+	# Enable Gzip and Zstandard response compression
+	encode gzip zstd
+
+	# Proxy all traffic (SPA frontend & /api/* backend endpoints) to app container
+	reverse_proxy app:3000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}

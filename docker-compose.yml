@@ -1,0 +1,73 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Services
+# ─────────────────────────────────────────────────────────────────────────────
+services:
+
+  # ── Node.js application + SPA ──────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - sqlite_data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Caddy reverse proxy & Auto-SSL ────────────────────────────────────────
+  # Automatically obtains and renews Let's Encrypt / ZeroSSL TLS certificates.
+  # Serves HTTP/HTTPS, enables HTTP/2 + HTTP/3, and proxies traffic to the app container.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+      - CERTBOT_EMAIL=${CERTBOT_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - internal
+      - external
+    depends_on:
+      app:
+        condition: service_healthy
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Networks
+# ─────────────────────────────────────────────────────────────────────────────
+networks:
+  internal:
+    driver: bridge
+    internal: true
+
+  external:
+    driver: bridge
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Volumes
+# ─────────────────────────────────────────────────────────────────────────────
+volumes:
+  # SQLite database volume — persists data across container rebuilds.
+  sqlite_data:
+
+  # Caddy TLS certificate data volume — persists TLS certificates across restarts.
+  caddy_data:
+
+  # Caddy configuration runtime volume.
+  caddy_config:
+
