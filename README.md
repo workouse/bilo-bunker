@@ -1,6 +1,6 @@
 # ⚡ Bilo Bunker
 
-> Multi-Tenant Nostr Remote Signer (NIP-46) & Management Dashboard built for Docker & Cloudflare Workers.
+> Multi-Tenant Nostr Remote Signer (NIP-46) & Management Dashboard built for Docker & Node.js.
 
 [![CI Pipeline](https://github.com/workouse/bilo-bunker/actions/workflows/ci.yml/badge.svg)](https://github.com/workouse/bilo-bunker/actions/workflows/ci.yml)
 [![Docker Image](https://github.com/workouse/bilo-bunker/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/workouse/bilo-bunker/actions/workflows/docker-publish.yml)
@@ -12,11 +12,19 @@
 
 ## 📌 Architecture Overview
 
-**Bilo Bunker** is an edge-native, stateful, multi-tenant Nostr remote signing service (NIP-46). It enables users to keep their Nostr private keys securely stored while responding to remote signing requests from authorized Nostr clients across Nostr relays.
+**Bilo Bunker** is a stateful, multi-tenant Nostr remote signing service (NIP-46). It enables users to keep their Nostr private keys securely stored while responding to remote signing requests from authorized Nostr clients across Nostr relays.
 
 - **Backend Application Engine (Hono + Node.js):** Handles NIP-46 RPC signing commands, NIP-05 profile verification, and SQLite persistent storage.
 - **Auto-SSL Reverse Proxy (Caddy 2):** Provisions and auto-renews Let's Encrypt / ZeroSSL TLS certificates for your domain out of the box.
 - **TailAdmin React UI SPA:** Modern dashboard allowing users to log in with NIP-07 (`window.nostr`), view active `bunker://` URIs, revoke client permissions, and audit real-time RPC logs.
+
+---
+
+## 🎭 Why "Bilo Bunker"?
+
+In the legendary 1980 Turkish cinema classic *Banker Bilo*, Maho promises naive villagers safe transport to Germany, only to deceive them, abandon them in Istanbul, and pocket their money. In the Nostr ecosystem, centralized key management services act like "Maho"—promising convenience while taking custody of your private keys.
+
+Bilo learned the hard way, took control of his own fate, and became the ultimate self-sovereign **Banker Bilo**. With **Bilo Bunker**, you own your keys, run your own isolated signing engine, and never have to ask: *"Yaptım ama bir sor niye yaptım?"* ("I did it, but ask me why I did it?").
 
 ---
 
@@ -37,14 +45,16 @@ nano .env
 docker compose up -d
 ```
 
-### Alternatively run via GHCR Docker Container:
+### Alternatively run via GHCR Standalone Docker Container:
+
+> **Note:** The standalone container image (`ghcr.io/workouse/bilo-bunker:latest`) runs the Node.js application engine directly on port `3000`. It does not contain ACME/Certbot. For automated TLS certificate provisioning (Let's Encrypt / ZeroSSL on ports 80/443), use the `docker compose up -d` stack above which includes the Caddy reverse proxy.
+
 ```bash
 docker run -d \
   --name bilo-bunker \
-  -p 80:80 -p 443:443 \
+  -p 3000:3000 \
   -v bilo_data:/data \
   -e DOMAIN=bunker.example.com \
-  -e CERTBOT_EMAIL=admin@example.com \
   -e OWNER_PUBKEY=your_64_char_hex_pubkey \
   ghcr.io/workouse/bilo-bunker:latest
 ```
@@ -56,7 +66,7 @@ docker run -d \
 | Variable | Description | Required | Default |
 |---|---|---|---|
 | `DOMAIN` | Primary domain name (e.g. `bunker.example.com` or `localhost`) | Yes | `localhost` |
-| `CERTBOT_EMAIL` | Email address for Let's Encrypt TLS certificate notifications | Yes (for TLS) | `""` |
+| `CERTBOT_EMAIL` | Email address for Let's Encrypt / ZeroSSL TLS notifications (used by Caddy in Docker Compose) | Optional (for Docker Compose) | `""` |
 | `OWNER_PUBKEY` | 64-character lowercase hex Nostr public key of the bunker owner | Yes | `""` |
 | `DEFAULT_RELAYS` | Comma-separated WebSocket Nostr relays to connect to | No | `wss://relay.damus.io,...` |
 | `PORT` | Node.js application server internal port | No | `3000` |
@@ -96,7 +106,25 @@ make test
 # Build production artifacts
 make build
 
-# Deploy via SSH to VPS host
+# Build local Docker image
+make docker-build
+
+# Launch production stack via Docker Compose
+make docker-up
+
+# Stop production stack
+make docker-down
+
+# Tail Docker Compose logs
+make docker-logs
+
+# Shell into application container
+make docker-shell
+
+# Create transaction-consistent SQLite database backup
+make backup
+
+# Deploy via SSH to remote VPS host
 make deploy
 ```
 
@@ -134,3 +162,4 @@ bilo-bunker/
 ## 📄 License
 
 Released under the [MIT License](LICENSE).
+

@@ -3,8 +3,8 @@ SHELL := /bin/bash
 NVM_RUN := source ~/.nvm/nvm.sh 2>/dev/null || true; nvm use 2>/dev/null || true;
 
 .PHONY: all install blackstart dev build lint typecheck test deploy clean \
-        docker-build docker-up docker-down docker-logs docker-shell docker-restart \
-        cert-init cert-renew backup
+        docker-build docker-run-single docker-run-multi docker-up docker-down docker-logs docker-shell docker-restart \
+        backup
 
 all: build
 
@@ -33,13 +33,13 @@ deploy:
 	@bash scripts/deploy.sh
 
 docker-build:
-	docker build -t ghcr.io/workhouse/bilo-bunker:latest .
+	docker build -t ghcr.io/workouse/bilo-bunker:latest .
 
 docker-run-single:
-	docker run -d --name bilo-bunker -p 3000:3000 -v $(PWD)/data:/data -e OWNER_NSEC=$(OWNER_NSEC) ghcr.io/workhouse/bilo-bunker:latest
+	docker run -d --name bilo-bunker -p 3000:3000 -v $(PWD)/data:/data -e OWNER_NSEC=$(OWNER_NSEC) ghcr.io/workouse/bilo-bunker:latest
 
 docker-run-multi:
-	docker run -d --name bilo-bunker -p 3000:3000 -v $(PWD)/data:/data -e OWNER_NPUB=$(OWNER_NPUB) ghcr.io/workhouse/bilo-bunker:latest
+	docker run -d --name bilo-bunker -p 3000:3000 -v $(PWD)/data:/data -e OWNER_NPUB=$(OWNER_NPUB) ghcr.io/workouse/bilo-bunker:latest
 
 docker-up:
 	docker compose up -d
@@ -56,12 +56,6 @@ docker-shell:
 
 docker-restart:
 	docker compose restart
-
-cert-init:
-	docker compose --profile init run --rm certbot-init
-
-cert-renew:
-	docker compose exec certbot certbot renew --quiet
 
 backup:
 	@mkdir -p backups

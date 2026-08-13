@@ -2,7 +2,7 @@
   "name": "bilo-bunker-monorepo",
   "version": "1.0.0",
   "private": true,
-  "description": "Multi-Tenant Nostr Remote Signer (NIP-46) & Management Dashboard built for Docker & Cloudflare Workers",
+  "description": "Multi-Tenant Nostr Remote Signer (NIP-46) & Management Dashboard built for Docker & Node.js",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/workouse/bilo-bunker.git"
@@ -18,8 +18,7 @@
     "remote-signer",
     "caddy",
     "auto-ssl",
-    "docker",
-    "cloudflare-workers"
+    "docker"
   ],
   "scripts": {
     "dev": "pnpm --parallel --recursive run dev",
