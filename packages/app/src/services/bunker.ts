@@ -23,7 +23,7 @@ import type {
 
 // ── BunkerService ─────────────────────────────────────────────────────────────
 //
-// Central business-logic layer. Replaces the deleted Cloudflare BunkerDO.
+// Central business-logic layer for bunker state management.
 // All public methods are synchronous except the NIP-04 pair and handleNip46Request,
 // which must remain async because the underlying nip04.encrypt/decrypt are async.
 //

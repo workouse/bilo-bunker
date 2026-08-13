@@ -22,13 +22,28 @@ Before starting deployment, configure a single **A-record** with your DNS provid
 
 ---
 
-## 2. Quickstart Single-Command Deployment
+## 2. Quickstart & One-Step Server Installer
 
-On any server with Docker and Docker Compose installed, you can start Bilo Bunker with **Zero-Config Auto-SSL**:
+### Option A: One-Step Remote VPS Installer (Single Line)
+
+On any fresh Linux VPS (Ubuntu/Debian, CentOS/RHEL/Alma/Rocky, Alpine), run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/workouse/bilo-bunker/main/scripts/install.sh | bash
+```
+
+Or run locally via Makefile:
+```bash
+make install-remote
+```
+
+The installer automatically installs Docker & Docker Compose if missing, interactively prompts for your environment parameters (`DOMAIN`, `OWNER_PUBKEY`, `CERTBOT_EMAIL`), downloads production compose configurations, pulls the pre-built Docker image (`ghcr.io/workouse/bilo-bunker:latest`), and launches the stack with auto-renewing Let's Encrypt TLS certificates.
+
+### Option B: Manual Docker Compose Stack
 
 ```bash
 # 1. Clone repository and create configuration
-git clone https://github.com/your-org/bilo-bunker.git
+git clone https://github.com/workouse/bilo-bunker.git
 cd bilo-bunker
 cp .env.dist .env
 
@@ -64,11 +79,13 @@ The setup script (`scripts/blackstart.sh`) will prompt you for:
 
 ---
 
-## 4. Automated SSH Server Deployment (`make deploy`)
+## 4. Automated Remote SSH Deployment (`make deploy-remote` / `make deploy`)
 
 Deploy updates to your remote VPS with a single command:
 
 ```bash
+make deploy-remote
+# or
 make deploy
 ```
 
@@ -77,10 +94,10 @@ make deploy
 1. **Connectivity Check**: Tests SSH access to the deployment host.
 2. **Docker Check**: Installs Docker and Docker Compose if missing on remote server.
 3. **Release Isolation**: Creates timestamped release directory (`$DEPLOY_ROOT/releases/<TIMESTAMP>`).
-4. **File Sync**: Transfers code via `rsync`.
+4. **File Sync**: Transfers project configurations and manifests via `rsync`.
 5. **Data Symlinking**: Symlinks shared data (`$DEPLOY_ROOT/shared/data`) to `/data` in release directory.
 6. **Atomic Symlink**: Swaps `$DEPLOY_ROOT/current` symlink.
-7. **Caddy Auto-SSL & Launch**: Starts stack using `docker compose up -d --build`. Caddy manages TLS certificates automatically.
+7. **Image Pull & Caddy Auto-SSL Launch**: Pulls latest pre-built container image (`ghcr.io/workouse/bilo-bunker:latest`) and starts stack using `docker compose pull && docker compose up -d`. Caddy manages TLS certificates automatically.
 8. **Health Check**: Polls `https://$DOMAIN/api/v1/health` until HTTP 200 OK is returned.
 9. **Release Pruning**: Cleans up old releases, retaining the last 5 releases.
 

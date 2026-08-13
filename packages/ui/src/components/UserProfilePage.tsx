@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Copy, Check, ShieldCheck, Key, Globe, Sparkles } from 'lucide-react';
+import { User, Copy, Check, ShieldCheck, Key, Globe } from 'lucide-react';
 import { NostrProfile } from '../hooks/useNostrAuth';
 
 interface UserProfilePageProps {
@@ -13,7 +13,6 @@ export const UserProfilePage: React.FC<UserProfilePageProps> = ({
   pubkey,
   npub,
   profile,
-  bunkerPubkey,
 }) => {
   const [copiedKey, setCopiedKey] = useState<'npub' | 'hex' | null>(null);
 
@@ -37,7 +36,7 @@ export const UserProfilePage: React.FC<UserProfilePageProps> = ({
             Readonly
           </span>
         </h2>
-        <p className="text-sm text-dark-muted">Verified NIP-07 account identity &amp; edge Bunker binding state</p>
+        <p className="text-sm text-dark-muted">Verified NIP-07 account identity &amp; Bunker binding state</p>
       </div>
 
       {/* Profile Card Header */}
@@ -46,7 +45,7 @@ export const UserProfilePage: React.FC<UserProfilePageProps> = ({
         <div className="h-32 bg-gradient-to-r from-primary/30 via-accent-purple/30 to-slate-900 border-b border-dark-border relative">
           <div className="absolute top-4 right-4 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full text-xs font-mono flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>DO Tenant Active</span>
+            <span>Bunker Active</span>
           </div>
         </div>
 
@@ -134,28 +133,6 @@ export const UserProfilePage: React.FC<UserProfilePageProps> = ({
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Edge DO Tenant Info */}
-      <div className="glass-card p-6 rounded-2xl border border-dark-border space-y-4">
-        <h4 className="text-sm font-bold text-white flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-amber-400" />
-          Cloudflare Durable Object Tenant Status
-        </h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono">
-          <div className="bg-dark-bg p-3.5 rounded-xl border border-dark-border space-y-1">
-            <span className="text-dark-muted">DO Instance ID</span>
-            <p className="text-white truncate font-semibold">{pubkey.slice(0, 16)}...</p>
-          </div>
-          <div className="bg-dark-bg p-3.5 rounded-xl border border-dark-border space-y-1">
-            <span className="text-dark-muted">Master Bunker Pubkey</span>
-            <p className="text-emerald-400 truncate font-semibold">{bunkerPubkey || 'Active'}</p>
-          </div>
-          <div className="bg-dark-bg p-3.5 rounded-xl border border-dark-border space-y-1">
-            <span className="text-dark-muted">Isolation Tier</span>
-            <p className="text-indigo-400 font-semibold">SQLite Per-DO Sandbox</p>
           </div>
         </div>
       </div>

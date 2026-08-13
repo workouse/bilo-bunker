@@ -1,8 +1,9 @@
 import React from 'react';
 import { ShieldCheck, Github, LayoutDashboard, Globe } from 'lucide-react';
 import { LandingHero } from './LandingHero';
+import { DashboardPreviewSection } from './DashboardPreviewSection';
 import { BankerLoreSection } from './BankerLoreSection';
-import { CloudflareFeatures } from './CloudflareFeatures';
+import { PlatformFeatures } from './PlatformFeatures';
 import { QuickstartSection } from './QuickstartSection';
 import { ArchitectureSection } from './ArchitectureSection';
 import { WhoWeAreSection } from './WhoWeAreSection';
@@ -56,8 +57,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLaunchDashboard }) =
       {/* Main Content Sections */}
       <main className="flex-1">
         <LandingHero onLaunchDashboard={onLaunchDashboard} />
+        <DashboardPreviewSection />
         <BankerLoreSection />
-        <CloudflareFeatures />
+        <PlatformFeatures />
         <ArchitectureSection />
         <QuickstartSection />
         <WhoWeAreSection />

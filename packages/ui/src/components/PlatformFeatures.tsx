@@ -1,37 +1,37 @@
 import React from 'react';
-import { Cpu, Database, Cloud, ShieldCheck, Key, RefreshCw } from 'lucide-react';
+import { Container, ShieldCheck, Database, Key, Radio, RefreshCw } from 'lucide-react';
 
-export const CloudflareFeatures: React.FC = () => {
+export const PlatformFeatures: React.FC = () => {
   const features = [
     {
-      icon: Cpu,
-      title: 'Cloudflare Workers (Hono)',
+      icon: Container,
+      title: 'Docker & Docker Compose',
       color: 'text-amber-400',
       bgColor: 'bg-amber-500/10',
       borderColor: 'border-amber-500/20',
       description:
-        'Ultra-fast Hono router deployed across 300+ global edge locations for sub-millisecond API responses and static asset serving.',
+        'Lightweight Node.js 22 container stack with volume-persisted SQLite database and automated container health checks.',
     },
     {
-      icon: Database,
-      title: 'Durable Objects & SQLite',
+      icon: ShieldCheck,
+      title: 'Caddy Reverse Proxy & Auto-SSL',
       color: 'text-primary-light',
       bgColor: 'bg-primary/10',
       borderColor: 'border-primary/20',
       description:
-        'Each Nostr user gets a dedicated, isolated Durable Object with an embedded SQLite engine for stateful RPC logging and client management.',
+        'Zero-config HTTPS with automatic Let\'s Encrypt & ZeroSSL TLS certificate issuance, HTTP/2, and HTTP/3 support.',
     },
     {
-      icon: Cloud,
-      title: 'Cloudflare KV Namespace',
+      icon: Database,
+      title: 'SQLite Database Engine',
       color: 'text-accent-purple',
       bgColor: 'bg-accent-purple/10',
       borderColor: 'border-accent-purple/20',
       description:
-        'Global low-latency storage for user profile metadata, public keys, and high-frequency configuration lookups.',
+        'High-performance SQLite database with WAL mode enabled for stateful RPC logging, client authorizations, and keypair storage.',
     },
     {
-      icon: ShieldCheck,
+      icon: Key,
       title: 'NIP-98 HTTP Auth',
       color: 'text-emerald-400',
       bgColor: 'bg-emerald-500/10',
@@ -40,7 +40,7 @@ export const CloudflareFeatures: React.FC = () => {
         'Zero-trust HTTP header authentication signed via NIP-07 browser extensions with a strict ±60s replay protection window.',
     },
     {
-      icon: Key,
+      icon: Radio,
       title: 'NIP-46 & NIP-44 v2 Crypto',
       color: 'text-sky-400',
       bgColor: 'bg-sky-500/10',
@@ -50,12 +50,12 @@ export const CloudflareFeatures: React.FC = () => {
     },
     {
       icon: RefreshCw,
-      title: 'Auto-Healing WS Pool',
+      title: 'Auto-Healing WS Relay Pool',
       color: 'text-rose-400',
       bgColor: 'bg-rose-500/10',
       borderColor: 'border-rose-500/20',
       description:
-        'Durable Objects maintain resilient, persistent WebSocket client connections to Nostr relays with exponential backoff.',
+        'Maintains resilient, persistent WebSocket client connections to Nostr relays with exponential backoff and status monitoring.',
     },
   ];
 
@@ -64,10 +64,10 @@ export const CloudflareFeatures: React.FC = () => {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-3xl mx-auto mb-16 space-y-4">
           <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-            Built for Cloudflare Edge Infrastructure
+            Built for Self-Hosted Docker &amp; Caddy Infrastructure
           </h2>
           <p className="text-dark-muted text-base sm:text-lg">
-            Leveraging state-of-the-art serverless primitives to deliver high-performance, fault-tolerant Nostr remote key management.
+            Leveraging production-ready container primitives and reverse-proxy automation to deliver high-performance, fault-tolerant Nostr remote key management.
           </p>
         </div>
 

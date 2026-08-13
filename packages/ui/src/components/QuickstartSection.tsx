@@ -10,16 +10,16 @@ export const QuickstartSection: React.FC = () => {
       code: 'git clone https://github.com/workouse/bilo-bunker.git && cd bilo-bunker',
     },
     {
-      label: 'Verify Node & Install Workspace Dependencies',
-      code: 'make install',
+      label: 'Configure Environment & Interactive Setup',
+      code: 'cp .env.dist .env && make setup',
     },
     {
-      label: 'First-Time Interactive Cloudflare Setup',
-      code: 'make blackstart',
+      label: 'Spin Up Docker Stack with Caddy Auto-SSL',
+      code: 'docker compose up -d',
     },
     {
-      label: 'Deploy to Cloudflare Workers & Your Custom Domain',
-      code: 'make deploy',
+      label: 'Automated 1-Command Production Server Deploy',
+      code: 'make deploy-remote SERVER=user@host DOMAIN=bunker.example.com EMAIL=admin@example.com',
     },
   ];
 
@@ -43,7 +43,7 @@ export const QuickstartSection: React.FC = () => {
             Up &amp; Running in 4 Simple Commands
           </h2>
           <p className="text-dark-muted text-sm sm:text-base">
-            No complex database migrations, background redis instances, or docker monsters. Powered by Makefile DX automation.
+            Zero-config HTTPS via Caddy reverse proxy, single container deployment, and automated setup. Powered by Docker &amp; Makefile DX.
           </p>
         </div>
 
@@ -56,7 +56,7 @@ export const QuickstartSection: React.FC = () => {
               <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
               <span className="text-xs font-mono text-dark-muted ml-2 flex items-center space-x-1">
                 <Terminal className="w-3.5 h-3.5 text-primary" />
-                <span>bilo-bunker bash — make</span>
+                <span>bilo-bunker bash — docker compose</span>
               </span>
             </div>
 
@@ -112,11 +112,11 @@ export const QuickstartSection: React.FC = () => {
           <div className="bg-slate-900/60 p-4 border-t border-dark-border/60 flex flex-col sm:flex-row items-center justify-between text-xs text-dark-muted gap-2">
             <div className="flex items-center space-x-2">
               <Code2 className="w-4 h-4 text-primary" />
-              <span>Requires Node.js ^20.0.0 &amp; pnpm</span>
+              <span>Requires Docker &amp; Docker Compose v2.0+</span>
             </div>
             <div className="flex items-center space-x-2 font-mono">
               <Server className="w-4 h-4 text-emerald-400" />
-              <span>Deploy target: custom Cloudflare Worker domain</span>
+              <span>Deploy target: Docker Container + Caddy Auto-SSL</span>
             </div>
           </div>
         </div>
@@ -154,7 +154,7 @@ export const QuickstartSection: React.FC = () => {
               </div>
               <div className="text-slate-300">api.yourdomain.com</div>
               <div className="text-dark-muted text-[11px] font-sans">
-                Handles NIP-98 authentication, WebSocket relay connections, and DO state dispatch.
+                Handles NIP-98 authentication, WebSocket relay connections, and NIP-46 signing requests.
               </div>
             </div>
           </div>

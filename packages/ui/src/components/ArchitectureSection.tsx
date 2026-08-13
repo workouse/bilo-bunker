@@ -11,18 +11,18 @@ export const ArchitectureSection: React.FC = () => {
       badge: 'Kind 24133',
     },
     {
-      title: '2. Cloudflare Worker Gateway',
-      subtitle: 'Hono Edge Router',
-      description: 'Validates CORS, NIP-98 auth headers, and routes payload directly to target user Durable Object instance.',
+      title: '2. Caddy TLS & Hono Gateway',
+      subtitle: 'Auto-SSL & Reverse Proxy',
+      description: 'Terminates TLS with automatic Let\'s Encrypt certificates and routes requests to the Node.js Hono container engine.',
       icon: Server,
-      badge: 'Hono Edge',
+      badge: 'Caddy + Hono',
     },
     {
-      title: '3. Durable Object Sandbox',
-      subtitle: 'Isolated SQLite + Secp256k1',
+      title: '3. Isolated Bunker Engine',
+      subtitle: 'SQLite + Secp256k1',
       description: 'Decrypts NIP-44 payload, verifies client whitelist in SQLite, computes Schnorr signature, and logs execution audit.',
       icon: Database,
-      badge: 'DO SQLite',
+      badge: 'SQLite Store',
     },
     {
       title: '4. Encrypted Response',
@@ -38,10 +38,10 @@ export const ArchitectureSection: React.FC = () => {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-3xl mx-auto mb-16 space-y-4">
           <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-            Zero-Trust Edge Signing Architecture
+            Zero-Trust Containerized Signing Architecture
           </h2>
           <p className="text-dark-muted text-base sm:text-lg">
-            How Bilo Bunker isolates private keys and executes NIP-46 RPC requests at the edge.
+            How Bilo Bunker isolates private keys and executes NIP-46 RPC requests in a self-hosted environment.
           </p>
         </div>
 

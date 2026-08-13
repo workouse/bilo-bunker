@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 NVM_RUN := source ~/.nvm/nvm.sh 2>/dev/null || true; nvm use 2>/dev/null || true;
 
-.PHONY: all install blackstart dev build lint typecheck test deploy clean \
+.PHONY: all install blackstart dev build lint typecheck test deploy deploy-remote install-remote clean \
         docker-build docker-run-single docker-run-multi docker-up docker-down docker-logs docker-shell docker-restart \
         backup
 
@@ -31,6 +31,13 @@ test:
 
 deploy:
 	@bash scripts/deploy.sh
+
+deploy-remote:
+	@bash scripts/deploy.sh
+
+install-remote:
+	@bash scripts/install.sh
+
 
 docker-build:
 	docker build -t ghcr.io/workouse/bilo-bunker:latest .

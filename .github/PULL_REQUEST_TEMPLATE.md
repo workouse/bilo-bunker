@@ -5,7 +5,7 @@ Briefly describe the motivation and changes included in this PR.
 Fixes # (issue)
 
 ## Domain Agent Checklist
-- [ ] `@agent-arch`: Edge router & Durable Object compatibility verified.
+- [ ] `@agent-arch`: API router & SQLite storage compatibility verified.
 - [ ] `@agent-nostr`: NIP compliance & cryptographic signatures verified.
 - [ ] `@agent-ui`: TailAdmin UI design & NIP-07 state verified.
 - [ ] `@agent-devops`: `make lint`, `make typecheck`, and `make test` pass cleanly.

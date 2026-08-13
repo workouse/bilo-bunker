@@ -170,9 +170,9 @@ echo "⚡ Configuration complete!"
 echo "============================================================"
 echo -e "${RESET}"
 
-RUN_DEPLOY=$(prompt "Run make deploy now? [y/N]" "N")
+RUN_DEPLOY=$(prompt "Run make deploy-remote now? [y/N]" "N")
 if [[ "$RUN_DEPLOY" =~ ^[Yy]$ ]]; then
-  echo -e "${BOLD}Executing make deploy...${RESET}"
-  exec make deploy
+  echo -e "${BOLD}Executing make deploy-remote...${RESET}"
+  exec make deploy-remote
 fi
 

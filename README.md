@@ -20,6 +20,18 @@
 
 ---
 
+## 🖼️ Management Dashboard Screenshots
+
+| System Dashboard Overview | NIP-46 Bunker Connection URIs & QR |
+|:---:|:---:|
+| ![System Overview](screenshots/overview.png) | ![Bunker Connection URIs](screenshots/bunker-uris.png) |
+
+| Authorized App Permissions | Real-Time Security Audit Stream |
+|:---:|:---:|
+| ![Authorized App Permissions](screenshots/app-permissions.png) | ![RPC Security Audit Stream](screenshots/audit-logs.png) |
+
+---
+
 ## 🎭 Why "Bilo Bunker"?
 
 In the legendary 1980 Turkish cinema classic *Banker Bilo*, Maho promises naive villagers safe transport to Germany, only to deceive them, abandon them in Istanbul, and pocket their money. In the Nostr ecosystem, centralized key management services act like "Maho"—promising convenience while taking custody of your private keys.
@@ -28,9 +40,17 @@ Bilo learned the hard way, took control of his own fate, and became the ultimate
 
 ---
 
-## 🚀 Quickstart Production Deployment (Single Command)
+## 🚀 Quickstart Production Deployment
 
-Deploy Bilo Bunker on any VPS or server in seconds with **Zero-Config Auto-SSL**:
+### Option A: One-Step Server Installer (Single Line)
+
+Deploy Bilo Bunker on any Linux VPS with **Zero-Config Auto-SSL** via a single command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/workouse/bilo-bunker/main/scripts/install.sh | bash
+```
+
+### Option B: Manual Docker Compose Stack
 
 ```bash
 # 1. Clone repository
@@ -125,7 +145,10 @@ make docker-shell
 make backup
 
 # Deploy via SSH to remote VPS host
-make deploy
+make deploy-remote
+
+# One-step installer execution
+make install-remote
 ```
 
 ---
@@ -139,7 +162,7 @@ bilo-bunker/
 ├── Dockerfile            # Unified production multi-stage build
 ├── docker-compose.yml    # Production service orchestration
 ├── Makefile              # Developer automation shortcuts
-├── scripts/              # Setup & deployment scripts (blackstart.sh, deploy.sh)
+├── scripts/              # Setup & deployment scripts (blackstart.sh, deploy.sh, install.sh)
 ├── packages/
 │   ├── app/              # Hono Node.js backend engine & SQLite persistence
 │   └── ui/               # TailAdmin React SPA & NIP-07 Dashboard

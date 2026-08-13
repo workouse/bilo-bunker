@@ -127,10 +127,10 @@ echo -e "${BOLD}Swapping current release symlink...${RESET}"
 $SSH_CMD "ln -sfn '$RELEASE_DIR' '$DEPLOY_ROOT/current'"
 echo -e "${GREEN}✓ Current release updated to $RELEASE.${RESET}\n"
 
-# 8. Build & launch services with Docker Compose
-echo -e "${BOLD}Building and starting application services...${RESET}"
-$SSH_CMD "cd '$DEPLOY_ROOT/current' && docker compose up -d --build"
-echo -e "${GREEN}✓ Services built and started with Caddy Auto-SSL.${RESET}\n"
+# 8. Pull Docker images & launch services with Docker Compose
+echo -e "${BOLD}Pulling Docker images and starting application services...${RESET}"
+$SSH_CMD "cd '$DEPLOY_ROOT/current' && docker compose pull && docker compose up -d"
+echo -e "${GREEN}✓ Services pulled and started with Caddy Auto-SSL.${RESET}\n"
 
 # 9. Health check verification
 echo -e "${BOLD}Running health check on $DOMAIN...${RESET}"

@@ -23,7 +23,7 @@ export const BankerLoreSection: React.FC = () => {
               In the legendary 1980 Turkish cinema classic <em>Banker Bilo</em>, Maho promises villagers a safe trip to Germany, only to abandon them in Istanbul and pocket their money. In the world of Nostr, centralized key services make similar promises—offering convenience while holding your private keys captive.
             </p>
             <p className="text-dark-muted leading-relaxed">
-              Bilo learned the hard way, took control of his own fate, and became the ultimate self-sovereign <strong>Banker Bilo</strong>. With <strong>Bilo Bunker</strong>, you own your keys, run your own edge signing sandbox on Cloudflare, and never have to ask: <em>&quot;Yaptım ama bir sor niye yaptım?&quot;</em>
+              Bilo learned the hard way, took control of his own fate, and became the ultimate self-sovereign <strong>Banker Bilo</strong>. With <strong>Bilo Bunker</strong>, you own your keys, run your own self-hosted containerized signing sandbox with Docker, and never have to ask: <em>&quot;Yaptım ama bir sor niye yaptım?&quot;</em>
             </p>
           </div>
 
@@ -55,7 +55,7 @@ export const BankerLoreSection: React.FC = () => {
                   <div>
                     <div className="text-xs font-semibold text-emerald-300">The Banker Bilo Way</div>
                     <div className="text-xs text-emerald-200/70">
-                      Isolated Cloudflare Durable Object per user with hardware-like SQLite isolation & NIP-44 v2 encryption.
+                      Isolated Docker container &amp; SQLite database per user with NIP-44 v2 encryption &amp; Caddy SSL termination.
                     </div>
                   </div>
                 </div>

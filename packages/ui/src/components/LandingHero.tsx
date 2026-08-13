@@ -39,8 +39,8 @@ export const LandingHero: React.FC<LandingHeroProps> = ({ onLaunchDashboard }) =
 
         {/* Subtitle & Value Proposition */}
         <p className="max-w-3xl mx-auto text-lg sm:text-xl text-dark-muted mb-10 leading-relaxed">
-          An edge-native, stateful Nostr NIP-46 Remote Signer built on Cloudflare Workers &amp; Durable Objects.
-          Keep your private keys isolated in per-user SQLite containers with zero server maintenance and complete self-sovereignty.
+          A self-hosted, containerized Nostr NIP-46 Remote Signer built with Docker, Node.js 22 &amp; SQLite.
+          Deploy anywhere in seconds with Docker Compose &amp; Caddy Auto-SSL for zero-config HTTPS and complete self-sovereignty.
         </p>
 
         {/* Action Buttons */}
@@ -78,16 +78,16 @@ export const LandingHero: React.FC<LandingHeroProps> = ({ onLaunchDashboard }) =
             <div className="text-xs text-dark-muted">NIP-98 &amp; NIP-44 v2 Auth</div>
           </div>
           <div className="p-4 rounded-xl glass-card">
-            <div className="text-2xl font-bold text-emerald-400 mb-1">0 ms Cold Start</div>
-            <div className="text-xs text-dark-muted">Cloudflare Workers Edge</div>
+            <div className="text-2xl font-bold text-emerald-400 mb-1">Docker + Caddy</div>
+            <div className="text-xs text-dark-muted">Zero-Config Auto-SSL</div>
           </div>
           <div className="p-4 rounded-xl glass-card">
-            <div className="text-2xl font-bold text-accent-purple mb-1">SQLite / DO</div>
-            <div className="text-xs text-dark-muted">Isolated Stateful Storage</div>
+            <div className="text-2xl font-bold text-accent-purple mb-1">SQLite Storage</div>
+            <div className="text-xs text-dark-muted">Isolated Key Persistence</div>
           </div>
           <div className="p-4 rounded-xl glass-card">
             <div className="text-2xl font-bold text-amber-400 mb-1">1 Command</div>
-            <div className="text-xs text-dark-muted">`make deploy` publish</div>
+            <div className="text-xs text-dark-muted">`make deploy-remote`</div>
           </div>
         </div>
       </div>

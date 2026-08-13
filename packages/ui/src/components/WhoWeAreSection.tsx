@@ -92,7 +92,7 @@ export const WhoWeAreSection: React.FC = () => {
                   <Server className="w-4 h-4 text-accent-emerald" />
                   <span>DevOps &amp; Automation</span>
                 </div>
-                <p className="text-[11px] text-dark-muted">Nix flakes, Docker, IaC, AWS &amp; Cloudflare Edge</p>
+                <p className="text-[11px] text-dark-muted">Nix flakes, Docker, IaC, AWS &amp; Cloud Infrastructure</p>
               </div>
 
               <div className="bg-dark-bg/80 p-3.5 rounded-xl border border-dark-border space-y-1">

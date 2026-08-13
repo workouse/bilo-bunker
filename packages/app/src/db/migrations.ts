@@ -67,7 +67,7 @@ export function runMigrations(db: Database.Database): void {
       );
     `);
 
-    // Owner profile — replaces the old Cloudflare KV store
+    // Owner profile table
     db.exec(`
       CREATE TABLE IF NOT EXISTS profiles (
         pubkey     TEXT    PRIMARY KEY,

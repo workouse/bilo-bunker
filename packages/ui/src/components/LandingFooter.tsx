@@ -15,7 +15,7 @@ export const LandingFooter: React.FC = () => {
               <span className="text-lg font-bold text-white tracking-wide">Bilo Bunker</span>
             </div>
             <p className="text-xs text-dark-muted max-w-sm leading-relaxed">
-              Multi-Tenant Nostr Remote Signer (NIP-46) &amp; TailAdmin Management Engine built for Cloudflare Workers &amp; Durable Objects. Hosted on <span className="text-white font-mono">app.bunker-bilo.workouse.com</span> and <span className="text-emerald-400 font-mono">api.bunker-bilo.workouse.com</span>.
+              Multi-Tenant Nostr Remote Signer (NIP-46) &amp; TailAdmin Management Engine built for Docker, Docker Compose, Caddy &amp; Node.js. Hosted on <span className="text-white font-mono">app.bunker-bilo.workouse.com</span> and <span className="text-emerald-400 font-mono">api.bunker-bilo.workouse.com</span>.
             </p>
             <div className="text-xs font-mono text-amber-400/90 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-lg inline-block">
               &quot;Be the Banker of your own Nostr Keys.&quot;
@@ -92,7 +92,7 @@ export const LandingFooter: React.FC = () => {
                 <span className="text-dark-muted">License: MIT License</span>
               </li>
               <li>
-                <span className="text-dark-muted">Runtime: Cloudflare Workers</span>
+                <span className="text-dark-muted">Runtime: Docker / Node.js 22 + Caddy Auto-SSL</span>
               </li>
             </ul>
           </div>
