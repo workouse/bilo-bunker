@@ -45,7 +45,7 @@ export function runMigrations(db: Database.Database): void {
         ON rpc_audit_logs(created_at DESC);
     `);
 
-    // Named relay connection profiles — each has its own nsec + relay list
+    // Named relay connection profiles — each has its own nsec + relay list + permission rules
     db.exec(`
       CREATE TABLE IF NOT EXISTS connections (
         id               TEXT    PRIMARY KEY,
@@ -54,10 +54,17 @@ export function runMigrations(db: Database.Database): void {
         expiration       INTEGER NOT NULL,
         whitelisted_npub TEXT    NOT NULL,
         relays           TEXT    NOT NULL,
+        permissions      TEXT    NOT NULL DEFAULT '*',
         created_at       INTEGER NOT NULL,
         updated_at       INTEGER NOT NULL
       );
     `);
+
+    // Ensure permissions column exists in connections if table was created in older migration
+    const connCols = db.prepare('PRAGMA table_info(connections)').all() as Array<{ name: string }>;
+    if (connCols.length > 0 && !connCols.some((col) => col.name === 'permissions')) {
+      db.exec("ALTER TABLE connections ADD COLUMN permissions TEXT NOT NULL DEFAULT '*'");
+    }
 
     // Generic key-value process state (e.g. last_processed_timestamp for relay SUB)
     db.exec(`
@@ -76,6 +83,25 @@ export function runMigrations(db: Database.Database): void {
         picture    TEXT,
         updated_at INTEGER NOT NULL
       );
+    `);
+
+    // Granular client permissions and signing rules
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS client_permissions (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_pubkey TEXT    NOT NULL,
+        method        TEXT    NOT NULL,
+        kind          INTEGER,
+        policy        TEXT    NOT NULL CHECK(policy IN ('allow', 'block')),
+        created_at    INTEGER NOT NULL,
+        updated_at    INTEGER NOT NULL,
+        UNIQUE(client_pubkey, method, kind)
+      );
+    `);
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_client_permissions_pubkey
+        ON client_permissions(client_pubkey);
     `);
   })();
 }

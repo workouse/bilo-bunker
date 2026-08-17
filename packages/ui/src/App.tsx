@@ -5,6 +5,7 @@ import { Sidebar, TabType } from './components/Sidebar';
 import { OverviewPage } from './components/OverviewPage';
 import { BunkerUriPage, BunkerConnection } from './components/BunkerUriPage';
 import { PermissionsPage, ClientRecord } from './components/PermissionsPage';
+import { GranularRule } from './components/GranularRulesModal';
 import { AuditLogsPage, AuditLogRecord } from './components/AuditLogsPage';
 import { UserProfilePage } from './components/UserProfilePage';
 import { LandingPage } from './components/LandingPage';
@@ -54,6 +55,7 @@ export function App() {
   const [bunkerPubkey, setBunkerPubkey] = useState<string>('');
   const [bunkerUri, setBunkerUri] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientRecord[]>([]);
+  const [clientRulesMap, setClientRulesMap] = useState<Record<string, GranularRule[]>>({});
   const [connections, setConnections] = useState<BunkerConnection[]>([]);
   const [logs, setLogs] = useState<AuditLogRecord[]>([]);
 
@@ -85,7 +87,29 @@ export function App() {
       const clientsRes = await fetchWithNip98('/api/v1/bunker/clients');
       if (clientsRes.ok) {
         const clientsData = await clientsRes.json();
-        setClients(clientsData.clients || []);
+        const loadedClients: ClientRecord[] = clientsData.clients || [];
+        setClients(loadedClients);
+
+        // Fetch granular rules for each client
+        const rulesMap: Record<string, GranularRule[]> = {};
+        await Promise.all(
+          loadedClients.map(async (client) => {
+            try {
+              const ruleRes = await fetchWithNip98(
+                `/api/v1/bunker/clients/${client.client_pubkey}/rules`
+              );
+              if (ruleRes.ok) {
+                const ruleData = await ruleRes.json();
+                if (ruleData.rules && Array.isArray(ruleData.rules)) {
+                  rulesMap[client.client_pubkey] = ruleData.rules;
+                }
+              }
+            } catch {
+              // ignore
+            }
+          })
+        );
+        setClientRulesMap(rulesMap);
       }
 
       // Fetch audit logs
@@ -160,6 +184,7 @@ export function App() {
     expiration: number;
     whitelistedNpub: string;
     relays: string[];
+    rules?: GranularRule[];
   }) => {
     try {
       const res = await fetchWithNip98('/api/v1/bunker/connections', {
@@ -182,6 +207,8 @@ export function App() {
         expiration: data.expiration,
         whitelisted_npub: data.whitelistedNpub,
         relays: data.relays.join(', '),
+        rules: data.rules,
+        permissions: data.rules ? JSON.stringify(data.rules) : '*',
         created_at: Math.floor(Date.now() / 1000),
         updated_at: Math.floor(Date.now() / 1000),
       };
@@ -202,7 +229,14 @@ export function App() {
 
   const handleEditConnection = async (
     id: string,
-    data: { name: string; nsec: string; expiration: number; whitelistedNpub: string; relays: string[] }
+    data: {
+      name: string;
+      nsec: string;
+      expiration: number;
+      whitelistedNpub: string;
+      relays: string[];
+      rules?: GranularRule[];
+    }
   ) => {
     try {
       const res = await fetchWithNip98(`/api/v1/bunker/connections/${id}`, {
@@ -228,6 +262,8 @@ export function App() {
                 expiration: data.expiration,
                 whitelisted_npub: data.whitelistedNpub,
                 relays: data.relays.join(', '),
+                rules: data.rules,
+                permissions: data.rules ? JSON.stringify(data.rules) : c.permissions,
                 updated_at: Math.floor(Date.now() / 1000),
               }
             : c
@@ -252,6 +288,54 @@ export function App() {
       // Local optimistic update fallback
     }
     setClients((prev) => prev.filter((c) => c.client_pubkey !== clientPubkey));
+    setClientRulesMap((prev) => {
+      const updated = { ...prev };
+      delete updated[clientPubkey];
+      return updated;
+    });
+  };
+
+  const handleSaveRules = async (clientPubkey: string, rules: GranularRule[]) => {
+    try {
+      const res = await fetchWithNip98(`/api/v1/bunker/clients/${clientPubkey}/rules`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rules }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setClientRulesMap((prev) => ({
+          ...prev,
+          [clientPubkey]: data.rules || rules,
+        }));
+      }
+    } catch {
+      // Local optimistic update fallback
+      setClientRulesMap((prev) => ({
+        ...prev,
+        [clientPubkey]: rules,
+      }));
+    }
+  };
+
+  const handleResetRules = async (clientPubkey: string) => {
+    try {
+      await fetchWithNip98(`/api/v1/bunker/clients/${clientPubkey}/rules`, {
+        method: 'DELETE',
+      });
+      setClientRulesMap((prev) => {
+        const updated = { ...prev };
+        delete updated[clientPubkey];
+        return updated;
+      });
+    } catch {
+      // Local optimistic update fallback
+      setClientRulesMap((prev) => {
+        const updated = { ...prev };
+        delete updated[clientPubkey];
+        return updated;
+      });
+    }
   };
 
   const handleFetchRelays = async (target: { nsec?: string; pubkey?: string }): Promise<string[]> => {
@@ -347,7 +431,15 @@ export function App() {
               onFetchRelays={handleFetchRelays}
             />
           )}
-          {activeTab === 'permissions' && <PermissionsPage clients={clients} onRevoke={handleRevokeClient} />}
+          {activeTab === 'permissions' && (
+            <PermissionsPage
+              clients={clients}
+              clientRulesMap={clientRulesMap}
+              onRevoke={handleRevokeClient}
+              onSaveRules={handleSaveRules}
+              onResetRules={handleResetRules}
+            />
+          )}
           {activeTab === 'audit_logs' && <AuditLogsPage logs={logs} />}
           {activeTab === 'user_profile' && (
             <UserProfilePage pubkey={pubkey} npub={npub} profile={profile} bunkerPubkey={bunkerPubkey} />

@@ -1,5 +1,6 @@
 # ── Dependencies & Package Manager Stores ────────────────────────────────────
 node_modules/
+packages/*/node_modules/
 .pnpm-store/
 .npm/
 npm-debug.log*
@@ -10,7 +11,10 @@ pnpm-debug.log*
 # ── Build Outputs & Caches ───────────────────────────────────────────────────
 dist/
 build/
+packages/*/dist/
 packages/*/dist
+packages/worker/public/
+packages/app/public/
 .wrangler/
 .cache/
 .turbo/
@@ -30,9 +34,11 @@ backups/
 # ── Environment & Secrets (Never Commit Credentials) ─────────────────────────
 .env
 .env.*
+.env*.local
 !.env.example
 !.env.dist
 .envrc
+.direnv/
 deploy.conf
 
 # ── Logs & System Files ───────────────────────────────────────────────────────
@@ -43,9 +49,15 @@ logs/
 Thumbs.db
 Desktop.ini
 ._*
+*.tmp
+*.temp
 
 # ── Editor & IDE Configurations ──────────────────────────────────────────────
 .idea/
+.fleet/
+.zed/
+*.sublime-project
+*.sublime-workspace
 *.swp
 *.swo
 *~
@@ -61,3 +73,4 @@ Desktop.ini
 .vitest/
 coverage/
 .nyc_output/
+

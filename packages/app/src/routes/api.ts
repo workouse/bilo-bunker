@@ -146,7 +146,14 @@ export function createApiRouter(
       nsec: string;
       expiration?: number;
       whitelisted_npub?: string;
-      relays?: string;
+      whitelistedNpub?: string;
+      relays?: string | string[];
+      permissions?: string;
+      rules?: Array<{
+        method: string;
+        kind?: number | null;
+        policy: 'allow' | 'block';
+      }>;
     }>();
 
     const connection = bunkerService.createConnection(body);
@@ -166,7 +173,14 @@ export function createApiRouter(
       nsec?: string;
       expiration?: number;
       whitelisted_npub?: string;
-      relays?: string;
+      whitelistedNpub?: string;
+      relays?: string | string[];
+      permissions?: string;
+      rules?: Array<{
+        method: string;
+        kind?: number | null;
+        policy: 'allow' | 'block';
+      }>;
     }>();
 
     let connection: ReturnType<BunkerService['updateConnection']>;
@@ -201,6 +215,89 @@ export function createApiRouter(
   api.get('/bunker/clients', (c) => {
     const clients = bunkerService.getAuthorizedClients();
     return c.json({ success: true, clients });
+  });
+
+  // GET /bunker/clients/:clientPubkey/rules
+  // Get all granular permission rules configured for a client.
+  api.get('/bunker/clients/:clientPubkey/rules', (c) => {
+    const clientPubkey = c.req.param('clientPubkey');
+    const rules = bunkerService.getClientRules(clientPubkey);
+    return c.json({ success: true, rules });
+  });
+
+  // PUT /bunker/clients/:clientPubkey/rules
+  // Replace granular permission rules for a client.
+  api.put('/bunker/clients/:clientPubkey/rules', async (c) => {
+    const clientPubkey = c.req.param('clientPubkey');
+    const body = await c.req.json<{
+      rules?: Array<{
+        method: string;
+        kind?: number | null;
+        policy: 'allow' | 'block';
+      }>;
+    }>();
+
+    if (!Array.isArray(body.rules)) {
+      return c.json(
+        {
+          error: 'Bad Request',
+          message: 'rules must be an array of rule objects',
+        },
+        400
+      );
+    }
+
+    // Validate each rule
+    for (const r of body.rules) {
+      if (!r.method || typeof r.method !== 'string') {
+        return c.json(
+          {
+            error: 'Bad Request',
+            message: 'Each rule must have a valid string method',
+          },
+          400
+        );
+      }
+      if (r.policy !== 'allow' && r.policy !== 'block') {
+        return c.json(
+          {
+            error: 'Bad Request',
+            message: "Rule policy must be either 'allow' or 'block'",
+          },
+          400
+        );
+      }
+      if (r.kind !== undefined && r.kind !== null && typeof r.kind !== 'number') {
+        return c.json(
+          {
+            error: 'Bad Request',
+            message: 'Rule kind must be a number or null',
+          },
+          400
+        );
+      }
+    }
+
+    try {
+      const updatedRules = bunkerService.setClientRules(clientPubkey, body.rules);
+      return c.json({ success: true, rules: updatedRules });
+    } catch (err) {
+      return c.json(
+        {
+          error: 'Bad Request',
+          message: err instanceof Error ? err.message : String(err),
+        },
+        400
+      );
+    }
+  });
+
+  // DELETE /bunker/clients/:clientPubkey/rules
+  // Reset client granular rules back to default permissions.
+  api.delete('/bunker/clients/:clientPubkey/rules', (c) => {
+    const clientPubkey = c.req.param('clientPubkey');
+    const success = bunkerService.deleteClientRules(clientPubkey);
+    return c.json({ success });
   });
 
   // DELETE /bunker/clients/:clientPubkey

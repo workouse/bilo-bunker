@@ -15,11 +15,15 @@ import {
 import type {
   AuthorizedClientRecord,
   BunkerConnectionRecord,
+  ClientPermissionRecord,
+  GranularRule,
+  GranularRuleWithLabel,
   NIP46RequestPayload,
   RPCAuditLogRecord,
   SafeBunkerConnectionRecord,
   UserProfile,
 } from '../types/index.js';
+import { getFriendlyOperationLabel } from '../types/index.js';
 
 // ── BunkerService ─────────────────────────────────────────────────────────────
 //
@@ -184,7 +188,8 @@ export class BunkerService {
    */
   connectClient(
     clientPubkey: string,
-    secret?: string
+    secret?: string,
+    profilePermissions?: string
   ): { success: boolean; result?: string; error?: string } {
     // If client is already authorized, allow reconnection without requiring a secret.
     const isAlreadyAuth = this.db
@@ -217,6 +222,8 @@ export class BunkerService {
 
     // Secret is valid: upsert the client into authorized_clients.
     const now = Math.floor(Date.now() / 1000);
+    const initialPerms = profilePermissions || '*';
+
     this.db
       .prepare(
         `INSERT INTO authorized_clients (client_pubkey, permissions, created_at, updated_at)
@@ -225,14 +232,26 @@ export class BunkerService {
            permissions = excluded.permissions,
            updated_at  = excluded.updated_at`
       )
-      .run(clientPubkey, '*', now, now);
+      .run(clientPubkey, initialPerms, now, now);
+
+    // If profile has granular rules defined, initialize client_permissions
+    if (profilePermissions && profilePermissions !== '*') {
+      try {
+        const rules = JSON.parse(profilePermissions);
+        if (Array.isArray(rules) && rules.length > 0) {
+          this.setClientRules(clientPubkey, rules);
+        }
+      } catch {
+        // ignore
+      }
+    }
 
     return { success: true, result: 'ack' };
   }
 
   /** Sign a Nostr event template on behalf of an authorised client. */
   signEvent(clientPubkey: string, eventTemplate: EventTemplate): VerifiedEvent {
-    this.assertAuthorized(clientPubkey, 'sign_event');
+    this.assertAuthorized(clientPubkey, 'sign_event', eventTemplate?.kind);
     return finalizeEvent(eventTemplate, hexToBytes(this.secretKeyHex));
   }
 
@@ -281,7 +300,67 @@ export class BunkerService {
     return 'pong';
   }
 
-  // ── 5.4 Query methods ───────────────────────────────────────────────────────
+  // ── 5.4 Granular permissions and client queries ─────────────────────────────
+
+  /** Get all configured granular rules for a specific client with friendly labels. */
+  getClientRules(clientPubkey: string): GranularRuleWithLabel[] {
+    const rows = this.db
+      .prepare<[string], ClientPermissionRecord>(
+        'SELECT * FROM client_permissions WHERE client_pubkey = ? ORDER BY method, kind'
+      )
+      .all(clientPubkey);
+
+    return rows.map((r) => ({
+      method: r.method,
+      kind: r.kind,
+      policy: r.policy,
+      label: getFriendlyOperationLabel(r.method, r.kind),
+    }));
+  }
+
+  /**
+   * Set granular rules for a client in an atomic transaction.
+   * Replaces all existing rules for this client.
+   */
+  setClientRules(clientPubkey: string, rules: GranularRule[]): GranularRuleWithLabel[] {
+    const isAuth = this.db
+      .prepare<[string], { client_pubkey: string }>(
+        'SELECT client_pubkey FROM authorized_clients WHERE client_pubkey = ?'
+      )
+      .get(clientPubkey);
+
+    if (!isAuth) {
+      throw new Error(`Client '${clientPubkey}' is not in authorized clients list`);
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+
+    this.db.transaction(() => {
+      this.db
+        .prepare('DELETE FROM client_permissions WHERE client_pubkey = ?')
+        .run(clientPubkey);
+
+      const insertStmt = this.db.prepare(
+        `INSERT INTO client_permissions (client_pubkey, method, kind, policy, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      );
+
+      for (const rule of rules) {
+        const safeKind = typeof rule.kind === 'number' ? rule.kind : null;
+        insertStmt.run(clientPubkey, rule.method, safeKind, rule.policy, now, now);
+      }
+    })();
+
+    return this.getClientRules(clientPubkey);
+  }
+
+  /** Delete all granular rules for a client, reverting to default authorization. */
+  deleteClientRules(clientPubkey: string): boolean {
+    const result = this.db
+      .prepare('DELETE FROM client_permissions WHERE client_pubkey = ?')
+      .run(clientPubkey);
+    return result.changes > 0;
+  }
 
   /** List all clients that have been granted connect permission. */
   getAuthorizedClients(): AuthorizedClientRecord[] {
@@ -293,10 +372,13 @@ export class BunkerService {
   }
 
   /**
-   * Remove a client's authorisation.
+   * Remove a client's authorisation and any associated granular rules.
    * @returns `true` if a row was deleted, `false` if the client was not found.
    */
   revokeClientPermission(clientPubkey: string): boolean {
+    this.db
+      .prepare('DELETE FROM client_permissions WHERE client_pubkey = ?')
+      .run(clientPubkey);
     const result = this.db
       .prepare('DELETE FROM authorized_clients WHERE client_pubkey = ?')
       .run(clientPubkey);
@@ -320,7 +402,7 @@ export class BunkerService {
   getConnections(): SafeBunkerConnectionRecord[] {
     const rows = this.db
       .prepare<[], BunkerConnectionRecord>(
-        `SELECT id, name, nsec, expiration, whitelisted_npub, relays, created_at, updated_at
+        `SELECT id, name, nsec, expiration, whitelisted_npub, relays, permissions, created_at, updated_at
          FROM connections
          ORDER BY created_at DESC`
       )
@@ -329,6 +411,21 @@ export class BunkerService {
     return rows.map((r) => {
       const kp = parseNsecToKeypair(r.nsec);
       const pubkey = kp ? kp.publicKey : this.publicKey;
+      let parsedRules: GranularRuleWithLabel[] | undefined;
+      if (r.permissions && r.permissions !== '*') {
+        try {
+          const rawRules = JSON.parse(r.permissions);
+          if (Array.isArray(rawRules)) {
+            parsedRules = rawRules.map((rule: GranularRule) => ({
+              ...rule,
+              label: getFriendlyOperationLabel(rule.method, rule.kind),
+            }));
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       return {
         id: r.id,
         name: r.name,
@@ -336,6 +433,8 @@ export class BunkerService {
         expiration: r.expiration,
         whitelisted_npub: r.whitelisted_npub,
         relays: r.relays,
+        permissions: r.permissions ?? '*',
+        rules: parsedRules,
         created_at: r.created_at,
         updated_at: r.updated_at,
       };
@@ -379,6 +478,8 @@ export class BunkerService {
     whitelisted_npub?: string;
     whitelistedNpub?: string;
     relays?: string | string[];
+    permissions?: string;
+    rules?: GranularRule[];
   }): SafeBunkerConnectionRecord {
     const id = crypto.randomUUID();
     const now = Math.floor(Date.now() / 1000);
@@ -396,11 +497,18 @@ export class BunkerService {
         ? params.whitelistedNpub
         : '';
 
+    const permissionsStr =
+      params.rules && Array.isArray(params.rules) && params.rules.length > 0
+        ? JSON.stringify(params.rules)
+        : typeof params.permissions === 'string' && params.permissions.trim()
+        ? params.permissions.trim()
+        : '*';
+
     this.db
       .prepare(
         `INSERT INTO connections
-           (id, name, nsec, expiration, whitelisted_npub, relays, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+           (id, name, nsec, expiration, whitelisted_npub, relays, permissions, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -409,12 +517,41 @@ export class BunkerService {
         params.expiration ?? 0,
         whitelistedNpubStr,
         relaysStr,
+        permissionsStr,
         now,
         now
       );
 
+    // If a whitelisted client pubkey is given, immediately authorize & apply rules
+    if (whitelistedNpubStr) {
+      const hexPubkey = parseNpubToHex(whitelistedNpubStr);
+      if (hexPubkey) {
+        this.db
+          .prepare(
+            `INSERT INTO authorized_clients (client_pubkey, permissions, created_at, updated_at)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(client_pubkey) DO UPDATE SET
+               permissions = excluded.permissions,
+               updated_at  = excluded.updated_at`
+          )
+          .run(hexPubkey, permissionsStr, now, now);
+
+        if (params.rules && Array.isArray(params.rules) && params.rules.length > 0) {
+          this.setClientRules(hexPubkey, params.rules);
+        }
+      }
+    }
+
     const kp = parseNsecToKeypair(params.nsec);
     const pubkey = kp ? kp.publicKey : this.publicKey;
+
+    let parsedRules: GranularRuleWithLabel[] | undefined;
+    if (params.rules && Array.isArray(params.rules)) {
+      parsedRules = params.rules.map((rule) => ({
+        ...rule,
+        label: getFriendlyOperationLabel(rule.method, rule.kind),
+      }));
+    }
 
     return {
       id,
@@ -423,6 +560,8 @@ export class BunkerService {
       expiration: params.expiration ?? 0,
       whitelisted_npub: whitelistedNpubStr,
       relays: relaysStr,
+      permissions: permissionsStr,
+      rules: parsedRules,
       created_at: now,
       updated_at: now,
     };
@@ -442,6 +581,8 @@ export class BunkerService {
       whitelisted_npub: string;
       whitelistedNpub: string;
       relays: string | string[];
+      permissions: string;
+      rules: GranularRule[];
     }>
   ): SafeBunkerConnectionRecord {
     const existing = this.db
@@ -470,6 +611,13 @@ export class BunkerService {
         ? String(params.whitelistedNpub)
         : existing.whitelisted_npub;
 
+    const permissionsStr =
+      params.rules && Array.isArray(params.rules) && params.rules.length > 0
+        ? JSON.stringify(params.rules)
+        : params.permissions !== undefined
+        ? String(params.permissions)
+        : existing.permissions ?? '*';
+
     const merged: BunkerConnectionRecord = {
       ...existing,
       name: params.name ?? existing.name,
@@ -477,13 +625,14 @@ export class BunkerService {
       expiration: params.expiration ?? existing.expiration,
       whitelisted_npub: whitelistedNpubStr,
       relays: relaysStr,
+      permissions: permissionsStr,
       updated_at: now,
     };
 
     this.db
       .prepare(
         `UPDATE connections
-         SET name = ?, nsec = ?, expiration = ?, whitelisted_npub = ?, relays = ?, updated_at = ?
+         SET name = ?, nsec = ?, expiration = ?, whitelisted_npub = ?, relays = ?, permissions = ?, updated_at = ?
          WHERE id = ?`
       )
       .run(
@@ -492,14 +641,43 @@ export class BunkerService {
         merged.expiration,
         merged.whitelisted_npub,
         merged.relays,
+        merged.permissions,
         now,
         id
       );
 
+    if (whitelistedNpubStr) {
+      const hexPubkey = parseNpubToHex(whitelistedNpubStr);
+      if (hexPubkey) {
+        if (params.rules && Array.isArray(params.rules) && params.rules.length > 0) {
+          this.setClientRules(hexPubkey, params.rules);
+        }
+      }
+    }
+
     const kp = parseNsecToKeypair(merged.nsec);
     const pubkey = kp ? kp.publicKey : this.publicKey;
 
-    // Return safe projection — never expose nsec.
+    let parsedRules: GranularRuleWithLabel[] | undefined;
+    if (params.rules && Array.isArray(params.rules)) {
+      parsedRules = params.rules.map((rule) => ({
+        ...rule,
+        label: getFriendlyOperationLabel(rule.method, rule.kind),
+      }));
+    } else if (permissionsStr && permissionsStr !== '*') {
+      try {
+        const raw = JSON.parse(permissionsStr);
+        if (Array.isArray(raw)) {
+          parsedRules = raw.map((r: GranularRule) => ({
+            ...r,
+            label: getFriendlyOperationLabel(r.method, r.kind),
+          }));
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     return {
       id: merged.id,
       name: merged.name,
@@ -507,6 +685,8 @@ export class BunkerService {
       expiration: merged.expiration,
       whitelisted_npub: merged.whitelisted_npub,
       relays: merged.relays,
+      permissions: merged.permissions,
+      rules: parsedRules,
       created_at: merged.created_at,
       updated_at: now,
     };
@@ -841,13 +1021,15 @@ export class BunkerService {
           break;
         }
         case 'get_public_key': {
+          this.assertAuthorized(clientPubkey, 'get_public_key');
           const skBytes = hexToBytes(secretKeyHex);
           result = getPublicKey(skBytes);
           break;
         }
         case 'sign_event': {
-          this.assertAuthorized(clientPubkey, 'sign_event');
-          result = JSON.stringify(finalizeEvent(paramsArr[0] as EventTemplate, hexToBytes(secretKeyHex)));
+          const eventTemplate = paramsArr[0] as EventTemplate;
+          this.assertAuthorized(clientPubkey, 'sign_event', eventTemplate?.kind);
+          result = JSON.stringify(finalizeEvent(eventTemplate, hexToBytes(secretKeyHex)));
           break;
         }
         case 'nip44_encrypt':
@@ -883,10 +1065,14 @@ export class BunkerService {
           );
           break;
         case 'ping':
+          this.assertAuthorized(clientPubkey, 'ping');
           result = this.ping();
           break;
-        default:
+        default: {
+          this.assertAuthorized(clientPubkey, method || 'unknown');
           rpcError = `Unknown NIP-46 method: ${method ?? 'unknown'}`;
+          break;
+        }
       }
     } catch (err) {
       rpcError = err instanceof Error ? err.message : String(err);
@@ -945,22 +1131,85 @@ export class BunkerService {
   // ── 5.8 Private helpers ─────────────────────────────────────────────────────
 
   /**
-   * Throw if `clientPubkey` is not present in `authorized_clients`.
-   * The `method` parameter is included in the error message for auditability
-   * and is reserved for future per-method permission checks.
+   * Enforce granular permission policies for a client method and optional event kind.
+   *
+   * 1. Confirms client is present in `authorized_clients`.
+   * 2. Checks configured rules in `client_permissions` with cascading specificity:
+   *    - Exact match: (method, kind)
+   *    - Method wildcard: (method, null)
+   *    - Global wildcard: ('*', null)
+   * 3. Fallback:
+   *    - If no custom rules exist in `client_permissions`, checks legacy `permissions` column (e.g. '*').
+   *    - If custom rules are defined and no rule matches, defaults to blocking the unconfigured action.
    */
-  private assertAuthorized(clientPubkey: string, method: string): void {
-    const row = this.db
-      .prepare<[string], { client_pubkey: string }>(
-        'SELECT client_pubkey FROM authorized_clients WHERE client_pubkey = ?'
+  assertAuthorized(clientPubkey: string, method: string, kind?: number): void {
+    const authRow = this.db
+      .prepare<[string], { client_pubkey: string; permissions: string }>(
+        'SELECT client_pubkey, permissions FROM authorized_clients WHERE client_pubkey = ?'
       )
       .get(clientPubkey);
 
-    if (!row) {
+    if (!authRow) {
       throw new Error(
         `Client ${clientPubkey} is not authorized to call '${method}'`
       );
     }
+
+    const rules = this.db
+      .prepare<[string], { method: string; kind: number | null; policy: string }>(
+        'SELECT method, kind, policy FROM client_permissions WHERE client_pubkey = ?'
+      )
+      .all(clientPubkey);
+
+    if (rules.length === 0) {
+      // Legacy fallback: check comma-separated permissions string or wildcard '*'
+      const allowedList = authRow.permissions
+        .split(',')
+        .map((p) => p.trim())
+        .filter(Boolean);
+
+      if (allowedList.includes('*') || allowedList.includes(method)) {
+        return;
+      }
+      const label = getFriendlyOperationLabel(method, kind);
+      throw new Error(`Blocked by security policy: ${label}`);
+    }
+
+    // Evaluate matching rules with cascading priority
+    let matchedPolicy: string | undefined;
+
+    // 1. Exact match (method + exact kind)
+    if (kind !== undefined && kind !== null) {
+      const exact = rules.find((r) => r.method === method && r.kind === kind);
+      if (exact) matchedPolicy = exact.policy;
+    }
+
+    // 2. Method wildcard (method + any kind)
+    if (!matchedPolicy) {
+      const methodWildcard = rules.find(
+        (r) => r.method === method && (r.kind === null || r.kind === undefined)
+      );
+      if (methodWildcard) matchedPolicy = methodWildcard.policy;
+    }
+
+    // 3. Global wildcard ('*')
+    if (!matchedPolicy) {
+      const globalWildcard = rules.find((r) => r.method === '*');
+      if (globalWildcard) matchedPolicy = globalWildcard.policy;
+    }
+
+    const label = getFriendlyOperationLabel(method, kind);
+
+    if (matchedPolicy === 'block') {
+      throw new Error(`Blocked by security policy: ${label}`);
+    }
+
+    if (matchedPolicy === 'allow') {
+      return;
+    }
+
+    // Default deny for unconfigured methods when granular rules are active
+    throw new Error(`Blocked by security policy (no rule allowing): ${label}`);
   }
 
   /** Append a single entry to the immutable RPC audit log. */
