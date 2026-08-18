@@ -16,6 +16,7 @@ services:
       - sqlite_data:/data
     networks:
       - internal
+      - external
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/v1/health"]
       interval: 30s

@@ -63,17 +63,11 @@ export class RelayManager {
   private isPermanentError(errMsg: string): boolean {
     const lower = errMsg.toLowerCase();
     return (
-      lower.includes('ehostunreach') ||
-      lower.includes('enotfound') ||
-      lower.includes('econnrefused') ||
-      lower.includes('econnreset') ||
-      lower.includes('eai_again') ||
-      lower.includes('404') ||
-      lower.includes('403') ||
-      lower.includes('401') ||
-      lower.includes('400') ||
-      lower.includes('unexpected server response') ||
-      lower.includes('invalid url')
+      lower.includes('invalid url') ||
+      lower.includes('invalid uri') ||
+      lower.includes('unsupported protocol') ||
+      lower.includes('unknown url scheme') ||
+      lower.includes('invalid scheme')
     );
   }
 
@@ -141,6 +135,14 @@ export class RelayManager {
   connect(relayUrl: string): void {
     if (this.stopped || this.disabledRelays.has(relayUrl)) return;
 
+    if (!relayUrl.startsWith('ws://') && !relayUrl.startsWith('wss://')) {
+      this.disabledRelays.add(relayUrl);
+      console.warn(
+        `[relay] Disabling invalid relay URL (must start with ws:// or wss://): ${relayUrl}`
+      );
+      return;
+    }
+
     const existing = this.connections.get(relayUrl);
     if (existing?.readyState === WebSocket.OPEN) return;
 
@@ -153,7 +155,19 @@ export class RelayManager {
 
     let lastErrorMessage = '';
 
-    const ws = new WebSocket(relayUrl);
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(relayUrl);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'WebSocket creation error';
+      console.error(`[relay] Failed to create WebSocket for ${relayUrl}:`, msg);
+      if (this.isPermanentError(msg)) {
+        this.disabledRelays.add(relayUrl);
+      } else {
+        this.scheduleReconnect(relayUrl, msg);
+      }
+      return;
+    }
 
     ws.on('open', () => {
       this.connections.set(relayUrl, ws);

@@ -38,6 +38,13 @@ describe('BunkerService & RelayManager Autoconnect & Parameter Guards', () => {
     }).not.toThrow();
   });
 
+  it('should disable non-websocket protocol URLs', () => {
+    expect(() => {
+      relayManager.connect('http://invalid-protocol.com');
+      relayManager.connect('ftp://invalid-protocol.com');
+    }).not.toThrow();
+  });
+
   it('should cleanly start and stop RelayManager keep-alive and stability timers', async () => {
     await relayManager.start();
     await relayManager.stop();
