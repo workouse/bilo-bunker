@@ -183,63 +183,105 @@ export class BunkerService {
    *
    * Secret validation is mandatory: the caller must supply the same secret that
    * was embedded in the bunker URI by `generateBunkerUri()`. The secret is stored
-   * in the `state` table under key `bunker_connect_secret` and remains valid until
-   * a new URI is generated (which replaces it).
+   * in the `state` table and remains valid until a new URI is generated.
    */
   connectClient(
     clientPubkey: string,
     secret?: string,
+    userPubkeyOrPermissions?: string,
     profilePermissions?: string
   ): { success: boolean; result?: string; error?: string } {
-    // If client is already authorized, allow reconnection without requiring a secret.
-    const isAlreadyAuth = this.db
-      .prepare<[string], { client_pubkey: string }>(
-        'SELECT client_pubkey FROM authorized_clients WHERE client_pubkey = ?'
-      )
-      .get(clientPubkey);
+    let cleanPubkey = '';
+    let perms = profilePermissions;
+
+    if (userPubkeyOrPermissions) {
+      if (
+        userPubkeyOrPermissions.startsWith('[') ||
+        userPubkeyOrPermissions.startsWith('{') ||
+        userPubkeyOrPermissions === '*'
+      ) {
+        perms = userPubkeyOrPermissions;
+      } else {
+        cleanPubkey = userPubkeyOrPermissions.trim().toLowerCase();
+      }
+    }
+
+    // If client is already authorized for this user, allow reconnection without requiring a secret.
+    const isAlreadyAuth = cleanPubkey
+      ? this.db
+          .prepare<[string, string], { client_pubkey: string }>(
+            'SELECT client_pubkey FROM authorized_clients WHERE client_pubkey = ? AND LOWER(user_pubkey) = ?'
+          )
+          .get(clientPubkey, cleanPubkey)
+      : this.db
+          .prepare<[string], { client_pubkey: string }>(
+            'SELECT client_pubkey FROM authorized_clients WHERE client_pubkey = ?'
+          )
+          .get(clientPubkey);
 
     if (isAlreadyAuth) {
       return { success: true, result: 'ack' };
     }
 
     // Retrieve the currently active connect secret.
-    const storedRow = this.db
-      .prepare<[], { value: string }>(
-        "SELECT value FROM state WHERE key = 'bunker_connect_secret'"
-      )
-      .get();
+    let matchedUserPubkey = cleanPubkey;
+    if (cleanPubkey) {
+      const storedRow = this.db
+        .prepare<[string], { value: string }>(
+          'SELECT value FROM state WHERE key = ?'
+        )
+        .get(`bunker_connect_secret:${cleanPubkey}`);
 
-    if (!storedRow) {
-      return {
-        success: false,
-        error: 'No active bunker URI — call generateBunkerUri first',
-      };
+      const fallbackRow = this.db
+        .prepare<[], { value: string }>(
+          "SELECT value FROM state WHERE key = 'bunker_connect_secret'"
+        )
+        .get();
+
+      const expectedSecret = storedRow?.value || fallbackRow?.value;
+      if (!expectedSecret) {
+        return {
+          success: false,
+          error: 'No active bunker URI — call generateBunkerUri first',
+        };
+      }
+
+      if (!secret || secret !== expectedSecret) {
+        return { success: false, error: 'Invalid or missing connection secret' };
+      }
+    } else {
+      const allSecrets = this.db
+        .prepare<[], { key: string; value: string }>(
+          "SELECT key, value FROM state WHERE key LIKE 'bunker_connect_secret%'"
+        )
+        .all();
+
+      const matched = allSecrets.find((s) => s.value === secret);
+      if (!matched || !secret) {
+        return { success: false, error: 'Invalid or missing connection secret' };
+      }
+      if (matched.key.startsWith('bunker_connect_secret:')) {
+        matchedUserPubkey = matched.key.split(':')[1] || '';
+      }
     }
 
-    if (!secret || secret !== storedRow.value) {
-      return { success: false, error: 'Invalid or missing connection secret' };
-    }
-
-    // Secret is valid: upsert the client into authorized_clients.
+    // Secret is valid: insert the client into authorized_clients.
     const now = Math.floor(Date.now() / 1000);
-    const initialPerms = profilePermissions || '*';
+    const initialPerms = perms || '*';
 
     this.db
       .prepare(
-        `INSERT INTO authorized_clients (client_pubkey, permissions, created_at, updated_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(client_pubkey) DO UPDATE SET
-           permissions = excluded.permissions,
-           updated_at  = excluded.updated_at`
+        `INSERT INTO authorized_clients (user_pubkey, client_pubkey, permissions, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)`
       )
-      .run(clientPubkey, initialPerms, now, now);
+      .run(matchedUserPubkey, clientPubkey, initialPerms, now, now);
 
     // If profile has granular rules defined, initialize client_permissions
-    if (profilePermissions && profilePermissions !== '*') {
+    if (perms && perms !== '*') {
       try {
-        const rules = JSON.parse(profilePermissions);
+        const rules = JSON.parse(perms);
         if (Array.isArray(rules) && rules.length > 0) {
-          this.setClientRules(clientPubkey, rules);
+          this.setClientRules(clientPubkey, rules, matchedUserPubkey);
         }
       } catch {
         // ignore
@@ -303,12 +345,19 @@ export class BunkerService {
   // ── 5.4 Granular permissions and client queries ─────────────────────────────
 
   /** Get all configured granular rules for a specific client with friendly labels. */
-  getClientRules(clientPubkey: string): GranularRuleWithLabel[] {
-    const rows = this.db
-      .prepare<[string], ClientPermissionRecord>(
-        'SELECT * FROM client_permissions WHERE client_pubkey = ? ORDER BY method, kind'
-      )
-      .all(clientPubkey);
+  getClientRules(clientPubkey: string, userPubkey?: string): GranularRuleWithLabel[] {
+    const cleanPubkey = userPubkey ? userPubkey.trim().toLowerCase() : '';
+    const rows = cleanPubkey
+      ? this.db
+          .prepare<[string, string], ClientPermissionRecord>(
+            'SELECT * FROM client_permissions WHERE client_pubkey = ? AND (LOWER(user_pubkey) = ? OR user_pubkey = \'\') ORDER BY method, kind'
+          )
+          .all(clientPubkey, cleanPubkey)
+      : this.db
+          .prepare<[string], ClientPermissionRecord>(
+            'SELECT * FROM client_permissions WHERE client_pubkey = ? ORDER BY method, kind'
+          )
+          .all(clientPubkey);
 
     return rows.map((r) => ({
       method: r.method,
@@ -322,12 +371,24 @@ export class BunkerService {
    * Set granular rules for a client in an atomic transaction.
    * Replaces all existing rules for this client.
    */
-  setClientRules(clientPubkey: string, rules: GranularRule[]): GranularRuleWithLabel[] {
-    const isAuth = this.db
-      .prepare<[string], { client_pubkey: string }>(
-        'SELECT client_pubkey FROM authorized_clients WHERE client_pubkey = ?'
-      )
-      .get(clientPubkey);
+  setClientRules(
+    clientPubkey: string,
+    rules: GranularRule[],
+    userPubkey?: string
+  ): GranularRuleWithLabel[] {
+    const cleanPubkey = userPubkey ? userPubkey.trim().toLowerCase() : '';
+
+    const isAuth = cleanPubkey
+      ? this.db
+          .prepare<[string, string], { client_pubkey: string }>(
+            'SELECT client_pubkey FROM authorized_clients WHERE client_pubkey = ? AND (LOWER(user_pubkey) = ? OR user_pubkey = \'\')'
+          )
+          .get(clientPubkey, cleanPubkey)
+      : this.db
+          .prepare<[string], { client_pubkey: string }>(
+            'SELECT client_pubkey FROM authorized_clients WHERE client_pubkey = ?'
+          )
+          .get(clientPubkey);
 
     if (!isAuth) {
       throw new Error(`Client '${clientPubkey}' is not in authorized clients list`);
@@ -336,37 +397,66 @@ export class BunkerService {
     const now = Math.floor(Date.now() / 1000);
 
     this.db.transaction(() => {
-      this.db
-        .prepare('DELETE FROM client_permissions WHERE client_pubkey = ?')
-        .run(clientPubkey);
+      if (cleanPubkey) {
+        this.db
+          .prepare(
+            'DELETE FROM client_permissions WHERE client_pubkey = ? AND (LOWER(user_pubkey) = ? OR user_pubkey = \'\')'
+          )
+          .run(clientPubkey, cleanPubkey);
+      } else {
+        this.db
+          .prepare('DELETE FROM client_permissions WHERE client_pubkey = ?')
+          .run(clientPubkey);
+      }
 
       const insertStmt = this.db.prepare(
-        `INSERT INTO client_permissions (client_pubkey, method, kind, policy, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO client_permissions (user_pubkey, client_pubkey, method, kind, policy, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       );
 
       for (const rule of rules) {
         const safeKind = typeof rule.kind === 'number' ? rule.kind : null;
-        insertStmt.run(clientPubkey, rule.method, safeKind, rule.policy, now, now);
+        insertStmt.run(cleanPubkey, clientPubkey, rule.method, safeKind, rule.policy, now, now);
       }
     })();
 
-    return this.getClientRules(clientPubkey);
+    return this.getClientRules(clientPubkey, cleanPubkey);
   }
 
   /** Delete all granular rules for a client, reverting to default authorization. */
-  deleteClientRules(clientPubkey: string): boolean {
-    const result = this.db
-      .prepare('DELETE FROM client_permissions WHERE client_pubkey = ?')
-      .run(clientPubkey);
+  deleteClientRules(clientPubkey: string, userPubkey?: string): boolean {
+    const cleanPubkey = userPubkey ? userPubkey.trim().toLowerCase() : '';
+    let result: Database.RunResult;
+
+    if (cleanPubkey) {
+      result = this.db
+        .prepare(
+          'DELETE FROM client_permissions WHERE client_pubkey = ? AND (LOWER(user_pubkey) = ? OR user_pubkey = \'\')'
+        )
+        .run(clientPubkey, cleanPubkey);
+    } else {
+      result = this.db
+        .prepare('DELETE FROM client_permissions WHERE client_pubkey = ?')
+        .run(clientPubkey);
+    }
     return result.changes > 0;
   }
 
   /** List all clients that have been granted connect permission. */
-  getAuthorizedClients(): AuthorizedClientRecord[] {
+  getAuthorizedClients(userPubkey?: string): AuthorizedClientRecord[] {
+    const cleanPubkey = userPubkey ? userPubkey.trim().toLowerCase() : '';
+
+    if (cleanPubkey && !this.isSingleUserMode()) {
+      return this.db
+        .prepare<[string], AuthorizedClientRecord>(
+          'SELECT user_pubkey, client_pubkey, permissions, created_at, updated_at FROM authorized_clients WHERE LOWER(user_pubkey) = ? ORDER BY created_at DESC'
+        )
+        .all(cleanPubkey);
+    }
+
     return this.db
       .prepare<[], AuthorizedClientRecord>(
-        'SELECT * FROM authorized_clients ORDER BY created_at DESC'
+        'SELECT user_pubkey, client_pubkey, permissions, created_at, updated_at FROM authorized_clients ORDER BY created_at DESC'
       )
       .all();
   }
@@ -375,7 +465,23 @@ export class BunkerService {
    * Remove a client's authorisation and any associated granular rules.
    * @returns `true` if a row was deleted, `false` if the client was not found.
    */
-  revokeClientPermission(clientPubkey: string): boolean {
+  revokeClientPermission(clientPubkey: string, userPubkey?: string): boolean {
+    const cleanPubkey = userPubkey ? userPubkey.trim().toLowerCase() : '';
+
+    if (cleanPubkey && !this.isSingleUserMode()) {
+      this.db
+        .prepare(
+          'DELETE FROM client_permissions WHERE client_pubkey = ? AND (LOWER(user_pubkey) = ? OR user_pubkey = \'\')'
+        )
+        .run(clientPubkey, cleanPubkey);
+      const result = this.db
+        .prepare(
+          'DELETE FROM authorized_clients WHERE client_pubkey = ? AND (LOWER(user_pubkey) = ? OR user_pubkey = \'\')'
+        )
+        .run(clientPubkey, cleanPubkey);
+      return result.changes > 0;
+    }
+
     this.db
       .prepare('DELETE FROM client_permissions WHERE client_pubkey = ?')
       .run(clientPubkey);
@@ -386,10 +492,20 @@ export class BunkerService {
   }
 
   /** Return the most recent RPC audit log entries (newest first). */
-  getAuditLogs(limit = 50): RPCAuditLogRecord[] {
+  getAuditLogs(limit = 50, userPubkey?: string): RPCAuditLogRecord[] {
+    const cleanPubkey = userPubkey ? userPubkey.trim().toLowerCase() : '';
+
+    if (cleanPubkey && !this.isSingleUserMode()) {
+      return this.db
+        .prepare<[string, number], RPCAuditLogRecord>(
+          'SELECT id, user_pubkey, client_pubkey, method, params, status, created_at FROM rpc_audit_logs WHERE LOWER(user_pubkey) = ? ORDER BY created_at DESC LIMIT ?'
+        )
+        .all(cleanPubkey, limit);
+    }
+
     return this.db
       .prepare<[number], RPCAuditLogRecord>(
-        'SELECT * FROM rpc_audit_logs ORDER BY created_at DESC LIMIT ?'
+        'SELECT id, user_pubkey, client_pubkey, method, params, status, created_at FROM rpc_audit_logs ORDER BY created_at DESC LIMIT ?'
       )
       .all(limit);
   }
@@ -399,14 +515,28 @@ export class BunkerService {
    * The `nsec` field is intentionally excluded — callers always receive the
    * safe projection so that private keys are never leaked over the HTTP API.
    */
-  getConnections(): SafeBunkerConnectionRecord[] {
-    const rows = this.db
-      .prepare<[], BunkerConnectionRecord>(
-        `SELECT id, name, nsec, expiration, whitelisted_npub, relays, permissions, created_at, updated_at
-         FROM connections
-         ORDER BY created_at DESC`
-      )
-      .all();
+  getConnections(userPubkey?: string): SafeBunkerConnectionRecord[] {
+    const cleanPubkey = userPubkey ? userPubkey.trim().toLowerCase() : '';
+    let rows: BunkerConnectionRecord[];
+
+    if (cleanPubkey && !this.isSingleUserMode()) {
+      rows = this.db
+        .prepare<[string], BunkerConnectionRecord>(
+          `SELECT id, user_pubkey, name, nsec, expiration, whitelisted_npub, relays, permissions, created_at, updated_at
+           FROM connections
+           WHERE LOWER(user_pubkey) = ?
+           ORDER BY created_at DESC`
+        )
+        .all(cleanPubkey);
+    } else {
+      rows = this.db
+        .prepare<[], BunkerConnectionRecord>(
+          `SELECT id, user_pubkey, name, nsec, expiration, whitelisted_npub, relays, permissions, created_at, updated_at
+           FROM connections
+           ORDER BY created_at DESC`
+        )
+        .all();
+    }
 
     return rows.map((r) => {
       const kp = parseNsecToKeypair(r.nsec);
@@ -428,6 +558,7 @@ export class BunkerService {
 
       return {
         id: r.id,
+        user_pubkey: r.user_pubkey,
         name: r.name,
         pubkey,
         expiration: r.expiration,
@@ -444,17 +575,26 @@ export class BunkerService {
   // ── 5.5 Connection CRUD ─────────────────────────────────────────────────────
 
   /**
-   * Generate a NIP-46 bunker URI for the current keypair.
+   * Generate a NIP-46 bunker URI for the current keypair or user.
    *
    * A random 32-character hex secret is generated on every call, stored in the
-   * `state` table (replacing any previous secret), and embedded in the URI.
+   * `state` table (scoped by userPubkey if provided), and embedded in the URI.
    * Clients that attempt `connect` without this exact secret will be rejected.
    */
-  generateBunkerUri(relays?: string[]): string {
+  generateBunkerUri(userPubkey?: string, relays?: string[]): string {
     const relayList = relays ?? this.getRelayUrls();
-
-    // Generate a cryptographically random secret and persist it.
     const secret = crypto.randomUUID().replace(/-/g, '');
+    const cleanPubkey = userPubkey ? userPubkey.trim().toLowerCase() : '';
+
+    if (cleanPubkey) {
+      this.db
+        .prepare(
+          'INSERT OR REPLACE INTO state (key, value) VALUES (?, ?)'
+        )
+        .run(`bunker_connect_secret:${cleanPubkey}`, secret);
+    }
+
+    // Also persist global secret for fallback / single user mode
     this.db
       .prepare(
         "INSERT OR REPLACE INTO state (key, value) VALUES ('bunker_connect_secret', ?)"
@@ -471,18 +611,22 @@ export class BunkerService {
   }
 
   /** Create a named relay connection profile. Returns the safe record (no nsec). */
-  createConnection(params: {
-    name: string;
-    nsec: string;
-    expiration?: number;
-    whitelisted_npub?: string;
-    whitelistedNpub?: string;
-    relays?: string | string[];
-    permissions?: string;
-    rules?: GranularRule[];
-  }): SafeBunkerConnectionRecord {
+  createConnection(
+    params: {
+      name: string;
+      nsec: string;
+      expiration?: number;
+      whitelisted_npub?: string;
+      whitelistedNpub?: string;
+      relays?: string | string[];
+      permissions?: string;
+      rules?: GranularRule[];
+    },
+    userPubkey?: string
+  ): SafeBunkerConnectionRecord {
     const id = crypto.randomUUID();
     const now = Math.floor(Date.now() / 1000);
+    const cleanPubkey = userPubkey ? userPubkey.trim().toLowerCase() : '';
 
     const relaysStr = Array.isArray(params.relays)
       ? params.relays.join(', ')
@@ -507,11 +651,12 @@ export class BunkerService {
     this.db
       .prepare(
         `INSERT INTO connections
-           (id, name, nsec, expiration, whitelisted_npub, relays, permissions, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           (id, user_pubkey, name, nsec, expiration, whitelisted_npub, relays, permissions, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
+        cleanPubkey,
         params.name,
         params.nsec,
         params.expiration ?? 0,
@@ -528,16 +673,13 @@ export class BunkerService {
       if (hexPubkey) {
         this.db
           .prepare(
-            `INSERT INTO authorized_clients (client_pubkey, permissions, created_at, updated_at)
-             VALUES (?, ?, ?, ?)
-             ON CONFLICT(client_pubkey) DO UPDATE SET
-               permissions = excluded.permissions,
-               updated_at  = excluded.updated_at`
+            `INSERT INTO authorized_clients (user_pubkey, client_pubkey, permissions, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?)`
           )
-          .run(hexPubkey, permissionsStr, now, now);
+          .run(cleanPubkey, hexPubkey, permissionsStr, now, now);
 
         if (params.rules && Array.isArray(params.rules) && params.rules.length > 0) {
-          this.setClientRules(hexPubkey, params.rules);
+          this.setClientRules(hexPubkey, params.rules, cleanPubkey);
         }
       }
     }
@@ -555,6 +697,7 @@ export class BunkerService {
 
     return {
       id,
+      user_pubkey: cleanPubkey,
       name: params.name,
       pubkey,
       expiration: params.expiration ?? 0,
@@ -583,8 +726,10 @@ export class BunkerService {
       relays: string | string[];
       permissions: string;
       rules: GranularRule[];
-    }>
+    }>,
+    userPubkey?: string
   ): SafeBunkerConnectionRecord {
+    const cleanPubkey = userPubkey ? userPubkey.trim().toLowerCase() : '';
     const existing = this.db
       .prepare<[string], BunkerConnectionRecord>(
         'SELECT * FROM connections WHERE id = ?'
@@ -593,6 +738,15 @@ export class BunkerService {
 
     if (!existing) {
       throw new Error(`Connection '${id}' not found`);
+    }
+
+    if (
+      cleanPubkey &&
+      !this.isSingleUserMode() &&
+      existing.user_pubkey &&
+      existing.user_pubkey.toLowerCase() !== cleanPubkey
+    ) {
+      throw new Error(`Connection '${id}' not found or access denied`);
     }
 
     const now = Math.floor(Date.now() / 1000);
@@ -650,7 +804,7 @@ export class BunkerService {
       const hexPubkey = parseNpubToHex(whitelistedNpubStr);
       if (hexPubkey) {
         if (params.rules && Array.isArray(params.rules) && params.rules.length > 0) {
-          this.setClientRules(hexPubkey, params.rules);
+          this.setClientRules(hexPubkey, params.rules, cleanPubkey);
         }
       }
     }
@@ -680,6 +834,7 @@ export class BunkerService {
 
     return {
       id: merged.id,
+      user_pubkey: merged.user_pubkey,
       name: merged.name,
       pubkey,
       expiration: merged.expiration,
@@ -696,23 +851,24 @@ export class BunkerService {
    * Delete a connection profile.
    * @returns `true` if a row was deleted, `false` if the id was not found.
    */
-  deleteConnection(id: string): boolean {
-    const result = this.db
-      .prepare('DELETE FROM connections WHERE id = ?')
-      .run(id);
+  deleteConnection(id: string, userPubkey?: string): boolean {
+    const cleanPubkey = userPubkey ? userPubkey.trim().toLowerCase() : '';
+    let result: Database.RunResult;
+
+    if (cleanPubkey && !this.isSingleUserMode()) {
+      result = this.db
+        .prepare(
+          "DELETE FROM connections WHERE id = ? AND (LOWER(user_pubkey) = ? OR user_pubkey = '')"
+        )
+        .run(id, cleanPubkey);
+    } else {
+      result = this.db.prepare('DELETE FROM connections WHERE id = ?').run(id);
+    }
     return result.changes > 0;
   }
 
-  // ── 5.6 New methods ─────────────────────────────────────────────────────────
+  // ── 5.6 Relay URL Discovery ──────────────────────────────────────────────────
 
-  /**
-   * Return the deduplicated and normalized union of relay URLs from:
-   *   1. System default relays fallback ('wss://relay.damus.io', 'wss://relay.nostr.band', 'wss://nos.lol')
-   *   2. The `DEFAULT_RELAYS` environment variable (comma-separated).
-   *   3. The `relays` column of every row in the `connections` table (user's custom relays).
-   *
-   * Normalizes URLs by trimming whitespace and removing trailing slashes.
-   */
   /**
    * Return the deduplicated and normalized union of relay URLs from:
    *   1. System default relays fallback ('wss://relay.damus.io', 'wss://relay.nostr.band', 'wss://nos.lol')
@@ -737,7 +893,7 @@ export class BunkerService {
       .all();
 
     const fromDb = rows
-      .flatMap(r => r.relays.split(','))
+      .flatMap((r) => r.relays.split(','))
       .map(normalize)
       .filter(Boolean);
 
@@ -811,18 +967,18 @@ export class BunkerService {
 
             ws.on('message', (data) => {
               try {
-                const parsed = JSON.parse(data.toString()) as unknown[];
-                if (Array.isArray(parsed) && parsed[0] === 'EVENT' && parsed[2]) {
-                  const ev = parsed[2] as { kind: number; tags?: string[][]; content?: string };
-                  const extracted = extractRelaysFromNostrEvent(ev);
-                  found.push(...extracted);
-                } else if (Array.isArray(parsed) && parsed[0] === 'EOSE') {
+                const msg = JSON.parse(data.toString());
+                if (Array.isArray(msg) && msg[0] === 'EVENT' && msg[2]) {
+                  const event = msg[2] as { kind: number; tags?: string[][]; content?: string };
+                  const relays = extractRelaysFromNostrEvent(event);
+                  for (const r of relays) found.push(r);
+                } else if (Array.isArray(msg) && msg[0] === 'EOSE') {
                   clearTimeout(timer);
-                  try { ws.close(); } catch { /* ignore close error */ }
+                  try { ws.close(); } catch { /* ignore */ }
                   resolve(found);
                 }
               } catch {
-                // Ignore parse errors
+                // ignore
               }
             });
 
@@ -832,11 +988,9 @@ export class BunkerService {
             });
           });
 
-          for (const r of fetched) {
-            discoveredRelays.add(r);
-          }
+          for (const r of fetched) discoveredRelays.add(r);
         } catch {
-          // Ignore connection errors
+          // ignore indexer connection failure
         }
       })
     );
@@ -856,22 +1010,35 @@ export class BunkerService {
     return Array.from(discoveredRelays);
   }
 
-  /** Return the owner's profile, or `null` if none has been set yet. */
-  getProfile(): UserProfile | null {
-    return (
-      this.db
-        .prepare<[], UserProfile>('SELECT * FROM profiles LIMIT 1')
-        .get() ?? null
-    );
+  /** Return the user's profile, or `null` if none has been set yet. */
+  getProfile(userPubkey?: string): UserProfile | null {
+    const targetPubkey = (userPubkey || this.publicKey).toLowerCase();
+    const row = this.db
+      .prepare<[string], UserProfile>('SELECT * FROM profiles WHERE LOWER(pubkey) = ?')
+      .get(targetPubkey);
+
+    if (row) return row;
+
+    if (!userPubkey) {
+      return (
+        this.db
+          .prepare<[], UserProfile>('SELECT * FROM profiles LIMIT 1')
+          .get() ?? null
+      );
+    }
+
+    return null;
   }
 
   /**
-   * Create or update the owner's profile.
-   * The pubkey is always the bunker's own public key — it cannot be overridden
-   * by callers, preventing profile spoofing.
+   * Create or update the user's profile.
    */
-  setProfile(data: Omit<UserProfile, 'pubkey' | 'updated_at'>): UserProfile {
+  setProfile(
+    data: Omit<UserProfile, 'pubkey' | 'updated_at'>,
+    userPubkey?: string
+  ): UserProfile {
     const now = Math.floor(Date.now() / 1000);
+    const targetPubkey = (userPubkey || this.publicKey).toLowerCase();
 
     this.db
       .prepare(
@@ -884,14 +1051,14 @@ export class BunkerService {
            updated_at = excluded.updated_at`
       )
       .run(
-        this.publicKey,
+        targetPubkey,
         data.name ?? null,
         data.nip05 ?? null,
         data.picture ?? null,
         now
       );
 
-    return { pubkey: this.publicKey, ...data, updated_at: now };
+    return { pubkey: targetPubkey, ...data, updated_at: now };
   }
 
   // ── 5.7 NIP-46 handler ──────────────────────────────────────────────────────
@@ -1089,7 +1256,8 @@ export class BunkerService {
       clientPubkey,
       method,
       JSON.stringify(paramsArr),
-      rpcError ? 'error' : 'success'
+      rpcError ? 'error' : 'success',
+      profile?.user_pubkey
     );
 
     // 8. Build response
@@ -1132,22 +1300,25 @@ export class BunkerService {
 
   /**
    * Enforce granular permission policies for a client method and optional event kind.
-   *
-   * 1. Confirms client is present in `authorized_clients`.
-   * 2. Checks configured rules in `client_permissions` with cascading specificity:
-   *    - Exact match: (method, kind)
-   *    - Method wildcard: (method, null)
-   *    - Global wildcard: ('*', null)
-   * 3. Fallback:
-   *    - If no custom rules exist in `client_permissions`, checks legacy `permissions` column (e.g. '*').
-   *    - If custom rules are defined and no rule matches, defaults to blocking the unconfigured action.
    */
-  assertAuthorized(clientPubkey: string, method: string, kind?: number): void {
-    const authRow = this.db
-      .prepare<[string], { client_pubkey: string; permissions: string }>(
-        'SELECT client_pubkey, permissions FROM authorized_clients WHERE client_pubkey = ?'
-      )
-      .get(clientPubkey);
+  assertAuthorized(
+    clientPubkey: string,
+    method: string,
+    kind?: number,
+    userPubkey?: string
+  ): void {
+    const cleanPubkey = userPubkey ? userPubkey.trim().toLowerCase() : '';
+    const authRow = cleanPubkey
+      ? this.db
+          .prepare<[string, string], { client_pubkey: string; permissions: string }>(
+            'SELECT client_pubkey, permissions FROM authorized_clients WHERE client_pubkey = ? AND (LOWER(user_pubkey) = ? OR user_pubkey = \'\')'
+          )
+          .get(clientPubkey, cleanPubkey)
+      : this.db
+          .prepare<[string], { client_pubkey: string; permissions: string }>(
+            'SELECT client_pubkey, permissions FROM authorized_clients WHERE client_pubkey = ?'
+          )
+          .get(clientPubkey);
 
     if (!authRow) {
       throw new Error(
@@ -1155,11 +1326,17 @@ export class BunkerService {
       );
     }
 
-    const rules = this.db
-      .prepare<[string], { method: string; kind: number | null; policy: string }>(
-        'SELECT method, kind, policy FROM client_permissions WHERE client_pubkey = ?'
-      )
-      .all(clientPubkey);
+    const rules = cleanPubkey
+      ? this.db
+          .prepare<[string, string], { method: string; kind: number | null; policy: string }>(
+            'SELECT method, kind, policy FROM client_permissions WHERE client_pubkey = ? AND (LOWER(user_pubkey) = ? OR user_pubkey = \'\')'
+          )
+          .all(clientPubkey, cleanPubkey)
+      : this.db
+          .prepare<[string], { method: string; kind: number | null; policy: string }>(
+            'SELECT method, kind, policy FROM client_permissions WHERE client_pubkey = ?'
+          )
+          .all(clientPubkey);
 
     if (rules.length === 0) {
       // Legacy fallback: check comma-separated permissions string or wildcard '*'
@@ -1217,15 +1394,17 @@ export class BunkerService {
     clientPubkey: string,
     method: string | undefined,
     params: string,
-    status: string
+    status: string,
+    userPubkey?: string
   ): void {
     const safeMethod = method || 'unknown';
+    const cleanPubkey = userPubkey ? userPubkey.trim().toLowerCase() : '';
     this.db
       .prepare(
-        `INSERT INTO rpc_audit_logs (client_pubkey, method, params, status, created_at)
-         VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO rpc_audit_logs (user_pubkey, client_pubkey, method, params, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(clientPubkey, safeMethod, params, status, Math.floor(Date.now() / 1000));
+      .run(cleanPubkey, clientPubkey, safeMethod, params, status, Math.floor(Date.now() / 1000));
   }
 
 }

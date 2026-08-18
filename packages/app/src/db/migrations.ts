@@ -20,17 +20,31 @@ export function runMigrations(db: Database.Database): void {
     // NIP-46 clients that have been granted connect permission
     db.exec(`
       CREATE TABLE IF NOT EXISTS authorized_clients (
-        client_pubkey TEXT    PRIMARY KEY,
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_pubkey   TEXT    NOT NULL DEFAULT '',
+        client_pubkey TEXT    NOT NULL,
         permissions   TEXT    NOT NULL,
         created_at    INTEGER NOT NULL,
         updated_at    INTEGER NOT NULL
       );
     `);
 
+    // Ensure user_pubkey column exists in authorized_clients if table was created in older migration
+    const authCols = db.prepare('PRAGMA table_info(authorized_clients)').all() as Array<{ name: string }>;
+    if (authCols.length > 0 && !authCols.some((col) => col.name === 'user_pubkey')) {
+      db.exec("ALTER TABLE authorized_clients ADD COLUMN user_pubkey TEXT NOT NULL DEFAULT ''");
+    }
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_auth_clients_user_client
+        ON authorized_clients(user_pubkey, client_pubkey);
+    `);
+
     // Immutable append-only log of every NIP-46 RPC call
     db.exec(`
       CREATE TABLE IF NOT EXISTS rpc_audit_logs (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_pubkey   TEXT    NOT NULL DEFAULT '',
         client_pubkey TEXT    NOT NULL,
         method        TEXT    NOT NULL,
         params        TEXT    NOT NULL,
@@ -39,16 +53,22 @@ export function runMigrations(db: Database.Database): void {
       );
     `);
 
-    // Index on created_at DESC for efficient log pagination queries
+    const auditCols = db.prepare('PRAGMA table_info(rpc_audit_logs)').all() as Array<{ name: string }>;
+    if (auditCols.length > 0 && !auditCols.some((col) => col.name === 'user_pubkey')) {
+      db.exec("ALTER TABLE rpc_audit_logs ADD COLUMN user_pubkey TEXT NOT NULL DEFAULT ''");
+    }
+
+    // Index on user_pubkey & created_at DESC for efficient log pagination queries
     db.exec(`
       CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at
-        ON rpc_audit_logs(created_at DESC);
+        ON rpc_audit_logs(user_pubkey, created_at DESC);
     `);
 
     // Named relay connection profiles — each has its own nsec + relay list + permission rules
     db.exec(`
       CREATE TABLE IF NOT EXISTS connections (
         id               TEXT    PRIMARY KEY,
+        user_pubkey      TEXT    NOT NULL DEFAULT '',
         name             TEXT    NOT NULL,
         nsec             TEXT    NOT NULL,
         expiration       INTEGER NOT NULL,
@@ -60,13 +80,23 @@ export function runMigrations(db: Database.Database): void {
       );
     `);
 
-    // Ensure permissions column exists in connections if table was created in older migration
+    // Ensure permissions and user_pubkey columns exist in connections if created in older migration
     const connCols = db.prepare('PRAGMA table_info(connections)').all() as Array<{ name: string }>;
-    if (connCols.length > 0 && !connCols.some((col) => col.name === 'permissions')) {
-      db.exec("ALTER TABLE connections ADD COLUMN permissions TEXT NOT NULL DEFAULT '*'");
+    if (connCols.length > 0) {
+      if (!connCols.some((col) => col.name === 'permissions')) {
+        db.exec("ALTER TABLE connections ADD COLUMN permissions TEXT NOT NULL DEFAULT '*'");
+      }
+      if (!connCols.some((col) => col.name === 'user_pubkey')) {
+        db.exec("ALTER TABLE connections ADD COLUMN user_pubkey TEXT NOT NULL DEFAULT ''");
+      }
     }
 
-    // Generic key-value process state (e.g. last_processed_timestamp for relay SUB)
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_connections_user_pubkey
+        ON connections(user_pubkey);
+    `);
+
+    // Generic key-value process state (e.g. last_processed_timestamp for relay SUB, bunker_connect_secret)
     db.exec(`
       CREATE TABLE IF NOT EXISTS state (
         key   TEXT PRIMARY KEY,
@@ -89,19 +119,24 @@ export function runMigrations(db: Database.Database): void {
     db.exec(`
       CREATE TABLE IF NOT EXISTS client_permissions (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_pubkey   TEXT    NOT NULL DEFAULT '',
         client_pubkey TEXT    NOT NULL,
         method        TEXT    NOT NULL,
         kind          INTEGER,
         policy        TEXT    NOT NULL CHECK(policy IN ('allow', 'block')),
         created_at    INTEGER NOT NULL,
-        updated_at    INTEGER NOT NULL,
-        UNIQUE(client_pubkey, method, kind)
+        updated_at    INTEGER NOT NULL
       );
     `);
 
+    const permCols = db.prepare('PRAGMA table_info(client_permissions)').all() as Array<{ name: string }>;
+    if (permCols.length > 0 && !permCols.some((col) => col.name === 'user_pubkey')) {
+      db.exec("ALTER TABLE client_permissions ADD COLUMN user_pubkey TEXT NOT NULL DEFAULT ''");
+    }
+
     db.exec(`
       CREATE INDEX IF NOT EXISTS idx_client_permissions_pubkey
-        ON client_permissions(client_pubkey);
+        ON client_permissions(user_pubkey, client_pubkey);
     `);
   })();
 }

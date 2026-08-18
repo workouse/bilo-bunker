@@ -33,29 +33,30 @@ export function createApiRouter(
   // ── 8.2 Routes ──────────────────────────────────────────────────────────────
 
   // GET /user/profile
-  // Returns the owner's bunker pubkey and stored profile metadata.
+  // Returns the user's profile metadata and bunker pubkey.
   api.get('/user/profile', (c) => {
-    const bunkerPubkey = bunkerService.getPublicKey();
-    const profile = bunkerService.getProfile();
     const user = c.get('user');
+    const bunkerPubkey = bunkerService.getPublicKey();
+    const profile = bunkerService.getProfile(user.pubkey);
 
     return c.json({
       userPubkey: user.pubkey,
       bunkerPubkey,
-      profile: profile ?? { pubkey: bunkerPubkey, updated_at: Math.floor(Date.now() / 1000) },
+      profile: profile ?? { pubkey: user.pubkey, updated_at: Math.floor(Date.now() / 1000) },
     });
   });
 
   // POST /user/profile
-  // Create or update the owner profile stored in the `profiles` SQLite table.
+  // Create or update the user profile stored in the `profiles` SQLite table.
   api.post('/user/profile', async (c) => {
+    const user = c.get('user');
     const body = await c.req.json<{ name?: string; nip05?: string; picture?: string }>();
 
     const updated = bunkerService.setProfile({
       name: body.name,
       nip05: body.nip05,
       picture: body.picture,
-    });
+    }, user.pubkey);
 
     return c.json({ success: true, profile: updated });
   });
@@ -63,6 +64,7 @@ export function createApiRouter(
   // POST /bunker/connect
   // Authorise a NIP-46 client that is completing the connect handshake.
   api.post('/bunker/connect', async (c) => {
+    const user = c.get('user');
     const body = await c.req.json<{ clientPubkey?: string; secret?: string }>();
 
     // Validate clientPubkey: must be a 64-char lowercase hex Nostr pubkey.
@@ -87,14 +89,15 @@ export function createApiRouter(
       );
     }
 
-    const response = bunkerService.connectClient(body.clientPubkey, body.secret);
+    const response = bunkerService.connectClient(body.clientPubkey, body.secret, user.pubkey);
     return c.json(response);
   });
 
   // GET /bunker/uri
-  // Generate a fresh NIP-46 bunker:// URI (rotates the connect secret).
+  // Generate a fresh NIP-46 bunker:// URI (rotates the connect secret for this user).
   api.get('/bunker/uri', (c) => {
-    const uri = bunkerService.generateBunkerUri();
+    const user = c.get('user');
+    const uri = bunkerService.generateBunkerUri(user.pubkey);
     return c.json({ success: true, uri });
   });
 
@@ -132,15 +135,17 @@ export function createApiRouter(
   });
 
   // GET /bunker/connections
-  // List all named relay connection profiles (nsec never returned).
+  // List all named relay connection profiles for the authenticated user.
   api.get('/bunker/connections', (c) => {
-    const connections = bunkerService.getConnections();
+    const user = c.get('user');
+    const connections = bunkerService.getConnections(user.pubkey);
     return c.json({ success: true, connections });
   });
 
   // POST /bunker/connections
-  // Create a new named relay connection profile, then refresh active relay sockets.
+  // Create a new named relay connection profile for the authenticated user.
   api.post('/bunker/connections', async (c) => {
+    const user = c.get('user');
     const body = await c.req.json<{
       name: string;
       nsec: string;
@@ -156,7 +161,7 @@ export function createApiRouter(
       }>;
     }>();
 
-    const connection = bunkerService.createConnection(body);
+    const connection = bunkerService.createConnection(body, user.pubkey);
 
     // Pick up any newly added relay URLs without requiring a restart.
     relayManager.refreshRelays();
@@ -167,6 +172,7 @@ export function createApiRouter(
   // PUT /bunker/connections/:id
   // Partially update an existing relay connection profile.
   api.put('/bunker/connections/:id', async (c) => {
+    const user = c.get('user');
     const id = c.req.param('id');
     const body = await c.req.json<{
       name?: string;
@@ -185,7 +191,7 @@ export function createApiRouter(
 
     let connection: ReturnType<BunkerService['updateConnection']>;
     try {
-      connection = bunkerService.updateConnection(id, body);
+      connection = bunkerService.updateConnection(id, body, user.pubkey);
     } catch (err) {
       return c.json(
         {
@@ -205,29 +211,33 @@ export function createApiRouter(
   // DELETE /bunker/connections/:id
   // Remove a named relay connection profile.
   api.delete('/bunker/connections/:id', (c) => {
+    const user = c.get('user');
     const id = c.req.param('id');
-    const success = bunkerService.deleteConnection(id);
+    const success = bunkerService.deleteConnection(id, user.pubkey);
     return c.json({ success });
   });
 
   // GET /bunker/clients
-  // List all NIP-46 clients that have been granted connect permission.
+  // List all NIP-46 clients that have been granted connect permission for this user.
   api.get('/bunker/clients', (c) => {
-    const clients = bunkerService.getAuthorizedClients();
+    const user = c.get('user');
+    const clients = bunkerService.getAuthorizedClients(user.pubkey);
     return c.json({ success: true, clients });
   });
 
   // GET /bunker/clients/:clientPubkey/rules
-  // Get all granular permission rules configured for a client.
+  // Get all granular permission rules configured for a client under this user.
   api.get('/bunker/clients/:clientPubkey/rules', (c) => {
+    const user = c.get('user');
     const clientPubkey = c.req.param('clientPubkey');
-    const rules = bunkerService.getClientRules(clientPubkey);
+    const rules = bunkerService.getClientRules(clientPubkey, user.pubkey);
     return c.json({ success: true, rules });
   });
 
   // PUT /bunker/clients/:clientPubkey/rules
-  // Replace granular permission rules for a client.
+  // Replace granular permission rules for a client under this user.
   api.put('/bunker/clients/:clientPubkey/rules', async (c) => {
+    const user = c.get('user');
     const clientPubkey = c.req.param('clientPubkey');
     const body = await c.req.json<{
       rules?: Array<{
@@ -279,7 +289,7 @@ export function createApiRouter(
     }
 
     try {
-      const updatedRules = bunkerService.setClientRules(clientPubkey, body.rules);
+      const updatedRules = bunkerService.setClientRules(clientPubkey, body.rules, user.pubkey);
       return c.json({ success: true, rules: updatedRules });
     } catch (err) {
       return c.json(
@@ -295,25 +305,28 @@ export function createApiRouter(
   // DELETE /bunker/clients/:clientPubkey/rules
   // Reset client granular rules back to default permissions.
   api.delete('/bunker/clients/:clientPubkey/rules', (c) => {
+    const user = c.get('user');
     const clientPubkey = c.req.param('clientPubkey');
-    const success = bunkerService.deleteClientRules(clientPubkey);
+    const success = bunkerService.deleteClientRules(clientPubkey, user.pubkey);
     return c.json({ success });
   });
 
   // DELETE /bunker/clients/:clientPubkey
   // Revoke a client's connect permission.
   api.delete('/bunker/clients/:clientPubkey', (c) => {
+    const user = c.get('user');
     const clientPubkey = c.req.param('clientPubkey');
-    const success = bunkerService.revokeClientPermission(clientPubkey);
+    const success = bunkerService.revokeClientPermission(clientPubkey, user.pubkey);
     return c.json({ success });
   });
 
   // GET /bunker/logs
-  // Return the most recent RPC audit log entries (newest first).
+  // Return the most recent RPC audit log entries (newest first) for this user.
   api.get('/bunker/logs', (c) => {
+    const user = c.get('user');
     const limitStr = c.req.query('limit');
     const limit = limitStr ? parseInt(limitStr, 10) : 50;
-    const logs = bunkerService.getAuditLogs(limit);
+    const logs = bunkerService.getAuditLogs(limit, user.pubkey);
     return c.json({ success: true, logs });
   });
 

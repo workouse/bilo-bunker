@@ -58,10 +58,8 @@ describe('NIP-98 Authentication & Authorization Middleware', () => {
     expect(resMalformed.status).toBe(401);
   });
 
-  it('in MULTI USER MODE: allows designated owner pubkey and rejects non-owner pubkeys with 403', async () => {
-    const ownerSk = generateSecretKey();
-    const ownerPk = getPublicKey(ownerSk);
-    process.env['OWNER_PUBKEY'] = ownerPk;
+  it('in MULTI USER MODE: allows authenticated users to access their isolated resources', async () => {
+    const userSk = generateSecretKey();
 
     const bunker = new BunkerService(db);
     const relay = new RelayManager(bunker, db);
@@ -71,26 +69,14 @@ describe('NIP-98 Authentication & Authorization Middleware', () => {
 
     const targetUrl = 'http://localhost/api/v1/bunker/uri';
 
-    // 1. Designated owner signs request -> 200 OK
-    const ownerAuth = createNip98AuthHeader(ownerSk, targetUrl, 'GET');
-    const ownerRes = await app.request('/api/v1/bunker/uri', {
-      headers: { Authorization: ownerAuth },
+    const userAuth = createNip98AuthHeader(userSk, targetUrl, 'GET');
+    const userRes = await app.request('/api/v1/bunker/uri', {
+      headers: { Authorization: userAuth },
     });
-    expect(ownerRes.status).toBe(200);
-    const ownerData = (await ownerRes.json()) as { success: boolean; uri: string };
-    expect(ownerData.success).toBe(true);
-    expect(ownerData.uri).toContain('bunker://');
-
-    // 2. Random third-party / attacker signs request with valid Nostr key -> 403 Forbidden
-    const strangerSk = generateSecretKey();
-    const strangerAuth = createNip98AuthHeader(strangerSk, targetUrl, 'GET');
-    const strangerRes = await app.request('/api/v1/bunker/uri', {
-      headers: { Authorization: strangerAuth },
-    });
-    expect(strangerRes.status).toBe(403);
-    const strangerData = (await strangerRes.json()) as { error: string; message: string };
-    expect(strangerData.error).toBe('Forbidden');
-    expect(strangerData.message).toContain('only the bunker owner can access');
+    expect(userRes.status).toBe(200);
+    const userData = (await userRes.json()) as { success: boolean; uri: string };
+    expect(userData.success).toBe(true);
+    expect(userData.uri).toContain('bunker://');
   });
 
   it('in SINGLE USER MODE: allows owner nsec key and rejects non-owner pubkeys with 403', async () => {
@@ -122,5 +108,8 @@ describe('NIP-98 Authentication & Authorization Middleware', () => {
       headers: { Authorization: strangerAuth },
     });
     expect(strangerRes.status).toBe(403);
+    const strangerData = (await strangerRes.json()) as { error: string; message: string };
+    expect(strangerData.error).toBe('Forbidden');
+    expect(strangerData.message).toContain('Single-user mode');
   });
 });

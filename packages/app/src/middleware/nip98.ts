@@ -30,11 +30,11 @@ export function createNip98AuthMiddleware(bunkerService: BunkerService) {
       (Boolean(serviceOwnerPubkey) && callerPubkey === serviceOwnerPubkey) ||
       (Boolean(envOwnerPubkey) && callerPubkey === envOwnerPubkey);
 
-    if (!isOwner) {
+    if (bunkerService.isSingleUserMode() && !isOwner) {
       return c.json(
         {
           error: 'Forbidden',
-          message: 'Forbidden: only the bunker owner can access administrative endpoints.',
+          message: 'Single-user mode: only the bunker owner can access this instance.',
         },
         403
       );

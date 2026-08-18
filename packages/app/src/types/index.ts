@@ -4,6 +4,7 @@ import type { VerifiedEvent } from 'nostr-tools';
 
 export interface BunkerConnectionRecord {
   id: string;
+  user_pubkey?: string;
   name: string;
   nsec: string;
   expiration: number;
@@ -20,6 +21,7 @@ export interface BunkerConnectionRecord {
  */
 export interface SafeBunkerConnectionRecord {
   id: string;
+  user_pubkey?: string;
   name: string;
   pubkey: string;
   expiration: number;
@@ -33,6 +35,7 @@ export interface SafeBunkerConnectionRecord {
 
 export interface AuthorizedClientRecord {
   client_pubkey: string;
+  user_pubkey?: string;
   permissions: string;
   created_at: number;
   updated_at: number;
@@ -40,6 +43,7 @@ export interface AuthorizedClientRecord {
 
 export interface RPCAuditLogRecord {
   id: number;
+  user_pubkey?: string;
   client_pubkey: string;
   method: string;
   params: string;
@@ -62,6 +66,7 @@ export interface UserProfile {
 export interface NIP98AuthContext {
   pubkey: string;
   event: VerifiedEvent;
+  isOwner?: boolean;
 }
 
 export interface NIP46RequestPayload {
