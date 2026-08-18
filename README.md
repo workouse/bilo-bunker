@@ -44,8 +44,13 @@ Bilo learned the hard way, took control of his own fate, and became the ultimate
 
 ### Option A: One-Step Server Installer (Single Line)
 
-Deploy Bilo Bunker on any Linux VPS with **Zero-Config Auto-SSL** via a single command:
+Deploy or update Bilo Bunker on any Linux VPS with **Zero-Config Auto-SSL** via a single command:
 
+```bash
+curl -fsSL https://bunker.workouse.com/install.sh | bash
+```
+
+Or via GitHub:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/workouse/bilo-bunker/main/scripts/install.sh | bash
 ```

@@ -34,52 +34,86 @@ if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
 fi
 echo -e "${GREEN}✓ All required local tools (docker, rsync, ssh) are present.${RESET}\n"
 
-# Helper prompt function
+# Helper prompt function (reads from /dev/tty when piped, or uses default)
 prompt() {
   local label="$1"
   local default_val="${2:-}"
   local response=""
 
+  local prompt_str
   if [ -n "$default_val" ]; then
-    read -r -p "$(echo -e "${BOLD}$label${RESET} [default: ${CYAN}$default_val${RESET}]: ")" response
-    echo "${response:-$default_val}"
+    prompt_str="$(echo -e "${BOLD}$label${RESET} [default: ${CYAN}$default_val${RESET}]: ")"
   else
-    read -r -p "$(echo -e "${BOLD}$label${RESET}: ")" response
-    echo "$response"
+    prompt_str="$(echo -e "${BOLD}$label${RESET}: ")"
   fi
+
+  if [ -t 0 ]; then
+    read -r -p "$prompt_str" response || true
+  elif [ -r /dev/tty ]; then
+    read -r -p "$prompt_str" response < /dev/tty 2>/dev/null || true
+  else
+    response="${default_val:-}"
+  fi
+
+  echo "${response:-$default_val}"
 }
 
 # Interactive configuration prompts
 echo -e "${BOLD}Please enter setup parameters:${RESET}\n"
 
+# Mode Selection: Multi-User vs Single-User
+echo -e "${BOLD}Select Bunker Operating Mode:${RESET}"
+echo -e "  ${CYAN}[1] Multi-User Mode${RESET} (Recommended: Host remote signer, login via NIP-07/NIP-98)"
+echo -e "  ${CYAN}[2] Single-User Mode${RESET} (Dedicated personal signer for a single private key/nsec)"
+
+MODE_CHOICE=$(prompt "Select mode" "1")
+OWNER_PUBKEY=""
+OWNER_NSEC=""
+
+if [ "$MODE_CHOICE" = "2" ] || [ "$MODE_CHOICE" = "single" ]; then
+  # Single-User Mode: Prompt for OWNER_NSEC (nsec1... or 64-char hex)
+  while true; do
+    OWNER_NSEC_INPUT=$(prompt "Owner Nostr Secret Key (nsec1... or 64-char hex)")
+    OWNER_NSEC_TRIMMED="$(echo "$OWNER_NSEC_INPUT" | tr -d '[:space:]')"
+    if [[ "$OWNER_NSEC_TRIMMED" =~ ^[0-9a-fA-F]{64}$ ]] || [[ "$OWNER_NSEC_TRIMMED" =~ ^nsec1[02-9ac-hj-np-z]{58}$ ]] || [[ "$OWNER_NSEC_TRIMMED" =~ ^nsec1[a-zA-Z0-9]{58}$ ]]; then
+      OWNER_NSEC="$OWNER_NSEC_TRIMMED"
+      break
+    else
+      echo -e "${RED}Invalid Nostr secret key. Must be a valid nsec (nsec1...) or 64 hex characters (0-9, a-f).${RESET}"
+    fi
+  done
+else
+  # Multi-User Mode: Prompt for OWNER_PUBKEY (npub1... or 64-char hex)
+  while true; do
+    OWNER_PUBKEY_INPUT=$(prompt "Admin Nostr Public Key (npub1... or 64-char hex)")
+    OWNER_PUBKEY_TRIMMED="$(echo "$OWNER_PUBKEY_INPUT" | tr -d '[:space:]')"
+    if [[ "$OWNER_PUBKEY_TRIMMED" =~ ^[0-9a-fA-F]{64}$ ]] || [[ "$OWNER_PUBKEY_TRIMMED" =~ ^npub1[02-9ac-hj-np-z]{58}$ ]] || [[ "$OWNER_PUBKEY_TRIMMED" =~ ^npub1[a-zA-Z0-9]{58}$ ]]; then
+      OWNER_PUBKEY="$OWNER_PUBKEY_TRIMMED"
+      break
+    else
+      echo -e "${RED}Invalid Nostr public key. Must be a valid npub (npub1...) or 64 hex characters (0-9, a-f).${RESET}"
+    fi
+  done
+fi
+
 # DOMAIN
 DOMAIN=""
 while [ -z "$DOMAIN" ]; do
-  DOMAIN=$(prompt "Primary Domain (e.g. bunker.example.com or localhost)")
+  DOMAIN=$(prompt "Primary Domain (e.g. bunker.example.com or localhost)" "localhost")
   if [ -z "$DOMAIN" ]; then
     echo -e "${RED}Primary domain cannot be empty.${RESET}"
   fi
 done
 
-# OWNER_PUBKEY (hex 64 validation)
-OWNER_PUBKEY=""
-while true; do
-  OWNER_PUBKEY=$(prompt "Owner Nostr Public Key (64-char hex)")
-  if [[ "$OWNER_PUBKEY" =~ ^[0-9a-fA-F]{64}$ ]]; then
-    break
-  else
-    echo -e "${RED}Invalid Nostr public key. Must be exactly 64 hex characters (0-9, a-f).${RESET}"
-  fi
-done
-
-# CERTBOT_EMAIL (@ validation)
+# CERTBOT_EMAIL (@ validation or empty for localhost)
 CERTBOT_EMAIL=""
 while true; do
-  CERTBOT_EMAIL=$(prompt "Email Address (for TLS certificates)")
-  if [[ "$CERTBOT_EMAIL" == *"@"* ]]; then
+  CERTBOT_EMAIL_INPUT=$(prompt "Email Address (for TLS certificates)" "")
+  if [ "$DOMAIN" = "localhost" ] || [ "$DOMAIN" = "127.0.0.1" ] || [[ "$CERTBOT_EMAIL_INPUT" == *"@"* ]] || [ -z "$CERTBOT_EMAIL_INPUT" ]; then
+    CERTBOT_EMAIL="$CERTBOT_EMAIL_INPUT"
     break
   else
-    echo -e "${RED}Invalid email address. Must contain '@'.${RESET}"
+    echo -e "${RED}Invalid email address. Must contain '@' or leave empty for localhost.${RESET}"
   fi
 done
 
@@ -104,7 +138,12 @@ echo "Configuration Summary"
 echo "============================================================"
 echo -e "${RESET}"
 echo -e "  Domain:          ${GREEN}$DOMAIN${RESET}"
-echo -e "  Owner Pubkey:    ${GREEN}$OWNER_PUBKEY${RESET}"
+if [ -n "$OWNER_PUBKEY" ]; then
+  echo -e "  Owner Pubkey:    ${GREEN}$OWNER_PUBKEY${RESET}"
+fi
+if [ -n "$OWNER_NSEC" ]; then
+  echo -e "  Owner Secret:    ${GREEN}[CONFIGURED]${RESET}"
+fi
 echo -e "  Cert Email:      ${GREEN}$CERTBOT_EMAIL${RESET}"
 echo -e "  Default Relays:  ${GREEN}$DEFAULT_RELAYS${RESET}"
 echo -e "  Deploy Host:     ${GREEN}$DEPLOY_HOST${RESET}"
@@ -132,15 +171,20 @@ else
 fi
 
 if [ "${WRITE_ENV:-0}" -eq 1 ]; then
-  if [ -f ".env.dist" ]; then
-    cp .env.dist .env
-  else
-    cp .env.example .env
-  fi
-  sed -i "s|^OWNER_PUBKEY=.*|OWNER_PUBKEY=$OWNER_PUBKEY|" .env
-  sed -i "s|^DEFAULT_RELAYS=.*|DEFAULT_RELAYS=$DEFAULT_RELAYS|" .env
-  sed -i "s|^CERTBOT_EMAIL=.*|CERTBOT_EMAIL=$CERTBOT_EMAIL|" .env
-  sed -i "s|^DOMAIN=.*|DOMAIN=$DOMAIN|" .env
+  {
+    echo "DOMAIN=$DOMAIN"
+    if [ -n "$OWNER_PUBKEY" ]; then
+      echo "OWNER_PUBKEY=$OWNER_PUBKEY"
+    fi
+    if [ -n "$OWNER_NSEC" ]; then
+      echo "OWNER_NSEC=$OWNER_NSEC"
+    fi
+    echo "CERTBOT_EMAIL=$CERTBOT_EMAIL"
+    echo "DEFAULT_RELAYS=$DEFAULT_RELAYS"
+    echo "PORT=3000"
+    echo "DB_PATH=/data/bunker.db"
+    echo "LOG_LEVEL=info"
+  } > .env
   echo -e "${GREEN}✓ Created .env${RESET}"
 fi
 

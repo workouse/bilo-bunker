@@ -31,5 +31,20 @@ describe('Bilo Bunker Health Check', () => {
     const data = (await res.json()) as { error: string };
     expect(data.error).toBe('Unauthorized');
   });
+
+  it('should serve the installer script on /install.sh and /install', async () => {
+    const resSh = await app.request('/install.sh');
+    expect(resSh.status).toBe(200);
+    expect(resSh.headers.get('content-type')).toContain('text/x-shellscript');
+    const textSh = await resSh.text();
+    expect(textSh).toContain('#!/usr/bin/env bash');
+    expect(textSh).toContain('Bilo Bunker');
+
+    const resAlias = await app.request('/install');
+    expect(resAlias.status).toBe(200);
+    expect(resAlias.headers.get('content-type')).toContain('text/x-shellscript');
+    const textAlias = await resAlias.text();
+    expect(textAlias).toBe(textSh);
+  });
 });
 

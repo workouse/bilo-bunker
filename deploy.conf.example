@@ -20,7 +20,7 @@ DEPLOY_KEY=~/.ssh/id_rsa
 # Absolute path on the remote server where releases are stored.
 # Each deploy creates a timestamped subdirectory under releases/ and updates
 # the `current` symlink atomically.
-DEPLOY_ROOT=/opt/bilo-bunker
+DEPLOY_ROOT=/home/ubuntu/bunker
 
 # Number of past releases to keep on the server. Older releases are pruned
 # automatically at the end of each successful deploy.

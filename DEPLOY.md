@@ -29,6 +29,11 @@ Before starting deployment, configure a single **A-record** with your DNS provid
 On any fresh Linux VPS (Ubuntu/Debian, CentOS/RHEL/Alma/Rocky, Alpine), run:
 
 ```bash
+curl -fsSL https://bunker.workouse.com/install.sh | bash
+```
+
+Or via GitHub fallback:
+```bash
 curl -fsSL https://raw.githubusercontent.com/workouse/bilo-bunker/main/scripts/install.sh | bash
 ```
 
@@ -37,7 +42,7 @@ Or run locally via Makefile:
 make install-remote
 ```
 
-The installer automatically installs Docker & Docker Compose if missing, interactively prompts for your environment parameters (`DOMAIN`, `OWNER_PUBKEY`, `CERTBOT_EMAIL`), downloads production compose configurations, pulls the pre-built Docker image (`ghcr.io/workouse/bilo-bunker:latest`), and launches the stack with auto-renewing Let's Encrypt TLS certificates.
+The installer installs to `~/bunker` (fully compatible with Rootless Docker and non-root users), prompts for mode (**Multi-User** with `npub1...`/hex or **Single-User** with `nsec1...`/hex), downloads production compose configurations, pulls the pre-built Docker image (`ghcr.io/workouse/bilo-bunker:latest`), and launches the stack with auto-renewing Let's Encrypt TLS certificates. Re-running the command automatically updates an existing installation.
 
 ### Option B: Manual Docker Compose Stack
 
@@ -138,8 +143,19 @@ For a managed cloud container deployment without VPS infrastructure, `packages/a
 
 ## 6. Maintenance & Application Updates
 
-To pull updates and deploy the latest version:
+### Option 1: Quick Update Command
+Inside your installation directory (`~/bunker`), run:
+```bash
+~/bunker/update.sh
+```
 
+### Option 2: Re-run Installer
+```bash
+curl -fsSL https://bunker.workouse.com/install.sh | bash
+```
+The installer automatically detects the existing installation, preserves `.env` and database volumes, pulls the newest container image, and recreates the services.
+
+### Option 3: Git-based deployment
 ```bash
 git pull origin main
 make deploy

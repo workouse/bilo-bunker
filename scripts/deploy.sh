@@ -40,7 +40,7 @@ fi
 : "${DEPLOY_HOST:?DEPLOY_HOST must be set in deploy.conf}"
 : "${DEPLOY_USER:?DEPLOY_USER must be set in deploy.conf}"
 : "${DEPLOY_KEY:?DEPLOY_KEY must be set in deploy.conf}"
-: "${DEPLOY_ROOT:=/opt/bilo-bunker}"
+: "${DEPLOY_ROOT:=/home/$DEPLOY_USER/bunker}"
 : "${DEPLOY_KEEP_RELEASES:=5}"
 : "${DOMAIN:?DOMAIN must be set in environment file}"
 

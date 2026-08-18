@@ -44,6 +44,9 @@ COPY --from=builder /workspace/packages/app/dist ./dist
 # Copy built UI SPA static assets to /app/public
 COPY --from=builder /workspace/packages/worker/public ./public
 
+# Copy deployment and installer scripts
+COPY --from=builder /workspace/scripts ./scripts
+
 # Install production dependencies only
 RUN npm install --omit=dev
 

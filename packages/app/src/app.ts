@@ -41,6 +41,29 @@ export function createApp(bunkerService: BunkerService, relayManager: RelayManag
     })
   );
 
+  // ── Public Installer Script Serving ────────────────────────────────────────
+  const serveInstallerScript = (c: import('hono').Context) => {
+    const candidatePaths = [
+      './scripts/install.sh',
+      '../../scripts/install.sh',
+      '../scripts/install.sh',
+      './public/install.sh',
+    ];
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        const content = fs.readFileSync(p, 'utf-8');
+        return c.text(content, 200, {
+          'Content-Type': 'text/x-shellscript; charset=utf-8',
+          'Cache-Control': 'public, max-age=300',
+        });
+      }
+    }
+    return c.text('#!/usr/bin/env bash\necho "Error: Installer script not found." >&2\nexit 1\n', 404);
+  };
+
+  app.get('/install.sh', serveInstallerScript);
+  app.get('/install', serveInstallerScript);
+
   // ── Protected API sub-router ───────────────────────────────────────────────
   app.route('/api/v1', createApiRouter(bunkerService, relayManager));
 
