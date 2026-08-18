@@ -47,10 +47,12 @@ prompt() {
     prompt_str="$(echo -e "${BOLD}$label${RESET}: ")"
   fi
 
-  if [ -t 0 ]; then
-    read -r -p "$prompt_str" response || true
-  elif [ -r /dev/tty ]; then
-    read -r -p "$prompt_str" response < /dev/tty 2>/dev/null || true
+  if [ -e /dev/tty ] && [ -r /dev/tty ]; then
+    printf "%b" "$prompt_str" > /dev/tty
+    read -r response < /dev/tty || true
+  elif [ -t 0 ]; then
+    printf "%b" "$prompt_str" >&2
+    read -r response || true
   else
     response="${default_val:-}"
   fi
