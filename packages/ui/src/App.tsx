@@ -119,56 +119,10 @@ export function App() {
         setLogs(logsData.logs || []);
       }
     } catch (err) {
-      // Graceful fallback for preview state
-      const activePk = bunkerPubkey || pubkey;
-      const fallbackUri = `bunker://${activePk}?relay=wss%3A%2F%2Frelay.damus.io&relay=wss%3A%2F%2Frelay.nostr.band`;
-      setBunkerUri(fallbackUri);
-      setConnections([
-        {
-          id: 'conn_damus_mobile',
-          name: 'Damus Mobile Signer',
-          nsec: 'nsec1_logged_in_user_key',
-          expiration: 0,
-          whitelisted_npub: 'npub18005555555555555555555555555555555555555555555555555555555',
-          relays: 'wss://relay.damus.io, wss://relay.nostr.band',
-          created_at: Math.floor(Date.now() / 1000) - 86400,
-          updated_at: Math.floor(Date.now() / 1000) - 3600,
-        },
-      ]);
-      setClients([
-        {
-          client_pubkey: '32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245',
-          permissions: 'sign_event,nip44_encrypt,ping',
-          created_at: Math.floor(Date.now() / 1000) - 86400,
-          updated_at: Math.floor(Date.now() / 1000) - 3600,
-        },
-      ]);
-      setLogs([
-        {
-          id: 1,
-          client_pubkey: '32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245',
-          method: 'create_connection',
-          params: JSON.stringify({ name: 'Damus Mobile Signer', whitelistedNpub: 'npub1800...' }),
-          status: 'CREATED',
-          created_at: Math.floor(Date.now() / 1000) - 86400,
-        },
-        {
-          id: 2,
-          client_pubkey: '32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245',
-          method: 'sign_event',
-          params: JSON.stringify({ kind: 1, content: 'Testing Bilo Bunker NIP-46 remote signing' }),
-          status: 'SUCCESS',
-          created_at: Math.floor(Date.now() / 1000) - 120,
-        },
-        {
-          id: 3,
-          client_pubkey: '7f91827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e111',
-          method: 'sign_event',
-          params: JSON.stringify({ kind: 1, reason: 'Client pubkey not in whitelisted npub set' }),
-          status: 'FORBIDDEN',
-          created_at: Math.floor(Date.now() / 1000) - 60,
-        },
-      ]);
+      console.error('Failed to load dashboard data from backend:', err);
+      setConnections([]);
+      setClients([]);
+      setLogs([]);
     }
   }, [pubkey, fetchWithNip98]);
 

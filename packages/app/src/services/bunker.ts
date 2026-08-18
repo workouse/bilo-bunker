@@ -292,8 +292,8 @@ export class BunkerService {
   }
 
   /** Sign a Nostr event template on behalf of an authorised client. */
-  signEvent(clientPubkey: string, eventTemplate: EventTemplate): VerifiedEvent {
-    this.assertAuthorized(clientPubkey, 'sign_event', eventTemplate?.kind);
+  signEvent(clientPubkey: string, eventTemplate: EventTemplate, userPubkey?: string): VerifiedEvent {
+    this.assertAuthorized(clientPubkey, 'sign_event', eventTemplate?.kind, userPubkey);
     return finalizeEvent(eventTemplate, hexToBytes(this.secretKeyHex));
   }
 
@@ -301,9 +301,10 @@ export class BunkerService {
   nip44Encrypt(
     clientPubkey: string,
     recipientPubkey: string,
-    plaintext: string
+    plaintext: string,
+    userPubkey?: string
   ): string {
-    this.assertAuthorized(clientPubkey, 'nip44_encrypt');
+    this.assertAuthorized(clientPubkey, 'nip44_encrypt', undefined, userPubkey);
     return nip44EncryptPayload(this.secretKeyHex, recipientPubkey, plaintext);
   }
 
@@ -311,9 +312,10 @@ export class BunkerService {
   nip44Decrypt(
     clientPubkey: string,
     senderPubkey: string,
-    ciphertext: string
+    ciphertext: string,
+    userPubkey?: string
   ): string {
-    this.assertAuthorized(clientPubkey, 'nip44_decrypt');
+    this.assertAuthorized(clientPubkey, 'nip44_decrypt', undefined, userPubkey);
     return nip44DecryptPayload(this.secretKeyHex, senderPubkey, ciphertext);
   }
 
@@ -321,9 +323,10 @@ export class BunkerService {
   async nip04Encrypt(
     clientPubkey: string,
     recipientPubkey: string,
-    plaintext: string
+    plaintext: string,
+    userPubkey?: string
   ): Promise<string> {
-    this.assertAuthorized(clientPubkey, 'nip04_encrypt');
+    this.assertAuthorized(clientPubkey, 'nip04_encrypt', undefined, userPubkey);
     return nip04EncryptPayload(this.secretKeyHex, recipientPubkey, plaintext);
   }
 
@@ -331,9 +334,10 @@ export class BunkerService {
   async nip04Decrypt(
     clientPubkey: string,
     senderPubkey: string,
-    ciphertext: string
+    ciphertext: string,
+    userPubkey?: string
   ): Promise<string> {
-    this.assertAuthorized(clientPubkey, 'nip04_decrypt');
+    this.assertAuthorized(clientPubkey, 'nip04_decrypt', undefined, userPubkey);
     return nip04DecryptPayload(this.secretKeyHex, senderPubkey, ciphertext);
   }
 
@@ -594,12 +598,14 @@ export class BunkerService {
         .run(`bunker_connect_secret:${cleanPubkey}`, secret);
     }
 
-    // Also persist global secret for fallback / single user mode
-    this.db
-      .prepare(
-        "INSERT OR REPLACE INTO state (key, value) VALUES ('bunker_connect_secret', ?)"
-      )
-      .run(secret);
+    // Persist global secret only in single user mode or when no cleanPubkey is provided
+    if (this.isSingleUserMode() || !cleanPubkey) {
+      this.db
+        .prepare(
+          "INSERT OR REPLACE INTO state (key, value) VALUES ('bunker_connect_secret', ?)"
+        )
+        .run(secret);
+    }
 
     const params = new URLSearchParams();
     for (const relay of relayList) {
@@ -878,7 +884,7 @@ export class BunkerService {
    *
    * Normalizes URLs by trimming whitespace and removing trailing slashes.
    */
-  getRelayUrls(): string[] {
+  getRelayUrls(userPubkey?: string): string[] {
     const normalize = (url: string): string =>
       url.trim().replace(/\/+$/, '');
 
@@ -888,32 +894,54 @@ export class BunkerService {
       'wss://nos.lol',
     ];
 
-    const rows = this.db
-      .prepare<[], { relays: string }>('SELECT relays FROM connections')
-      .all();
+    const cleanPubkey = userPubkey ? userPubkey.trim().toLowerCase() : '';
+    let fromDb: string[] = [];
 
-    const fromDb = rows
-      .flatMap((r) => r.relays.split(','))
-      .map(normalize)
-      .filter(Boolean);
+    if (cleanPubkey && !this.isSingleUserMode()) {
+      const rows = this.db
+        .prepare<[string], { relays: string }>(
+          'SELECT relays FROM connections WHERE LOWER(user_pubkey) = ?'
+        )
+        .all(cleanPubkey);
+      fromDb = rows
+        .flatMap((r) => r.relays.split(','))
+        .map(normalize)
+        .filter(Boolean);
+    } else {
+      const rows = this.db
+        .prepare<[], { relays: string }>('SELECT relays FROM connections')
+        .all();
+      fromDb = rows
+        .flatMap((r) => r.relays.split(','))
+        .map(normalize)
+        .filter(Boolean);
+    }
 
     const fromEnv = (process.env['DEFAULT_RELAYS'] ?? '')
       .split(',')
       .map(normalize)
       .filter(Boolean);
 
-    const fetchedRow = this.db
-      .prepare<[], { value: string }>(
-        "SELECT value FROM state WHERE key = 'fetched_user_relays'"
-      )
-      .get();
-
-    const fromFetched = fetchedRow
-      ? fetchedRow.value
-          .split(',')
-          .map(normalize)
-          .filter(Boolean)
-      : [];
+    let fromFetched: string[] = [];
+    if (cleanPubkey && !this.isSingleUserMode()) {
+      const userFetchedRow = this.db
+        .prepare<[string], { value: string }>(
+          'SELECT value FROM state WHERE key = ?'
+        )
+        .get(`fetched_user_relays:${cleanPubkey}`);
+      if (userFetchedRow) {
+        fromFetched = userFetchedRow.value.split(',').map(normalize).filter(Boolean);
+      }
+    } else {
+      const fetchedRow = this.db
+        .prepare<[], { value: string }>(
+          "SELECT value FROM state WHERE key = 'fetched_user_relays'"
+        )
+        .get();
+      if (fetchedRow) {
+        fromFetched = fetchedRow.value.split(',').map(normalize).filter(Boolean);
+      }
+    }
 
     const merged = [...systemDefaults, ...fromEnv, ...fromDb, ...fromFetched];
     return [...new Set(merged.map(normalize))];
@@ -923,13 +951,32 @@ export class BunkerService {
    * Query Nostr indexer relays (including wss://relay.emre.xyz) for kind 10002 & kind 3 events
    * for all managed pubkeys, extract user personal relays, save to SQLite `state`, and return discovered relays.
    */
-  async fetchUserRelaysFromNetwork(extraPubkeys?: string[]): Promise<string[]> {
-    const managedPubkeys = this.getAllPublicKeys();
-    const ownerPubkeyEnv = process.env['OWNER_PUBKEY'];
-    if (ownerPubkeyEnv) managedPubkeys.push(ownerPubkeyEnv.trim().toLowerCase());
-    if (extraPubkeys) managedPubkeys.push(...extraPubkeys);
+  async fetchUserRelaysFromNetwork(extraPubkeys?: string[], userPubkey?: string): Promise<string[]> {
+    const cleanPubkey = userPubkey ? userPubkey.trim().toLowerCase() : '';
+    const pubkeysToQuery: string[] = [];
 
-    const pubkeys = [...new Set(managedPubkeys.filter(Boolean))];
+    if (cleanPubkey && !this.isSingleUserMode()) {
+      pubkeysToQuery.push(cleanPubkey);
+      const connRows = this.db
+        .prepare<[string], { nsec: string }>(
+          'SELECT nsec FROM connections WHERE LOWER(user_pubkey) = ?'
+        )
+        .all(cleanPubkey);
+      for (const row of connRows) {
+        if (row.nsec) {
+          const kp = parseNsecToKeypair(row.nsec);
+          if (kp) pubkeysToQuery.push(kp.publicKey);
+        }
+      }
+    } else {
+      pubkeysToQuery.push(...this.getAllPublicKeys());
+      const ownerPubkeyEnv = process.env['OWNER_PUBKEY'];
+      if (ownerPubkeyEnv) pubkeysToQuery.push(ownerPubkeyEnv.trim().toLowerCase());
+    }
+
+    if (extraPubkeys) pubkeysToQuery.push(...extraPubkeys);
+
+    const pubkeys = [...new Set(pubkeysToQuery.map((pk) => pk.trim().toLowerCase()).filter(Boolean))];
     if (pubkeys.length === 0) return [];
 
     const indexerRelays = [
@@ -997,11 +1044,19 @@ export class BunkerService {
 
     if (discoveredRelays.size > 0) {
       const relayListStr = Array.from(discoveredRelays).join(',');
-      this.db
-        .prepare(
-          "INSERT OR REPLACE INTO state (key, value) VALUES ('fetched_user_relays', ?)"
-        )
-        .run(relayListStr);
+      if (cleanPubkey && !this.isSingleUserMode()) {
+        this.db
+          .prepare(
+            'INSERT OR REPLACE INTO state (key, value) VALUES (?, ?)'
+          )
+          .run(`fetched_user_relays:${cleanPubkey}`, relayListStr);
+      } else {
+        this.db
+          .prepare(
+            "INSERT OR REPLACE INTO state (key, value) VALUES ('fetched_user_relays', ?)"
+          )
+          .run(relayListStr);
+      }
       console.log(
         `[bunker] Discovered & cached ${discoveredRelays.size} personal user relay(s) from network`
       );
@@ -1178,29 +1233,35 @@ export class BunkerService {
     // 6. Route
     let result: unknown;
     let rpcError: string | undefined;
+    const tenantUserPubkey = profile?.user_pubkey;
 
     try {
       switch (method) {
         case 'connect': {
-          const connResult = this.connectClient(clientPubkey, paramsArr[0] as string | undefined);
+          const connResult = this.connectClient(
+            clientPubkey,
+            paramsArr[0] as string | undefined,
+            tenantUserPubkey,
+            profile?.permissions
+          );
           if (!connResult.success) throw new Error(connResult.error ?? 'connect failed');
           result = connResult.result ?? 'ack';
           break;
         }
         case 'get_public_key': {
-          this.assertAuthorized(clientPubkey, 'get_public_key');
+          this.assertAuthorized(clientPubkey, 'get_public_key', undefined, tenantUserPubkey);
           const skBytes = hexToBytes(secretKeyHex);
           result = getPublicKey(skBytes);
           break;
         }
         case 'sign_event': {
           const eventTemplate = paramsArr[0] as EventTemplate;
-          this.assertAuthorized(clientPubkey, 'sign_event', eventTemplate?.kind);
+          this.assertAuthorized(clientPubkey, 'sign_event', eventTemplate?.kind, tenantUserPubkey);
           result = JSON.stringify(finalizeEvent(eventTemplate, hexToBytes(secretKeyHex)));
           break;
         }
         case 'nip44_encrypt':
-          this.assertAuthorized(clientPubkey, 'nip44_encrypt');
+          this.assertAuthorized(clientPubkey, 'nip44_encrypt', undefined, tenantUserPubkey);
           result = nip44EncryptPayload(
             secretKeyHex,
             paramsArr[0] as string,
@@ -1208,7 +1269,7 @@ export class BunkerService {
           );
           break;
         case 'nip44_decrypt':
-          this.assertAuthorized(clientPubkey, 'nip44_decrypt');
+          this.assertAuthorized(clientPubkey, 'nip44_decrypt', undefined, tenantUserPubkey);
           result = nip44DecryptPayload(
             secretKeyHex,
             paramsArr[0] as string,
@@ -1216,7 +1277,7 @@ export class BunkerService {
           );
           break;
         case 'nip04_encrypt':
-          this.assertAuthorized(clientPubkey, 'nip04_encrypt');
+          this.assertAuthorized(clientPubkey, 'nip04_encrypt', undefined, tenantUserPubkey);
           result = await nip04EncryptPayload(
             secretKeyHex,
             paramsArr[0] as string,
@@ -1224,7 +1285,7 @@ export class BunkerService {
           );
           break;
         case 'nip04_decrypt':
-          this.assertAuthorized(clientPubkey, 'nip04_decrypt');
+          this.assertAuthorized(clientPubkey, 'nip04_decrypt', undefined, tenantUserPubkey);
           result = await nip04DecryptPayload(
             secretKeyHex,
             paramsArr[0] as string,
@@ -1232,11 +1293,11 @@ export class BunkerService {
           );
           break;
         case 'ping':
-          this.assertAuthorized(clientPubkey, 'ping');
+          this.assertAuthorized(clientPubkey, 'ping', undefined, tenantUserPubkey);
           result = this.ping();
           break;
         default: {
-          this.assertAuthorized(clientPubkey, method || 'unknown');
+          this.assertAuthorized(clientPubkey, method || 'unknown', undefined, tenantUserPubkey);
           rpcError = `Unknown NIP-46 method: ${method ?? 'unknown'}`;
           break;
         }

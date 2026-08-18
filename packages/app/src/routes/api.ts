@@ -128,8 +128,10 @@ export function createApiRouter(
       }
     }
 
+    const user = c.get('user');
     const relays = await bunkerService.fetchUserRelaysFromNetwork(
-      targetPubkey ? [targetPubkey] : undefined
+      targetPubkey ? [targetPubkey] : undefined,
+      user.pubkey
     );
     return c.json({ success: true, relays });
   });

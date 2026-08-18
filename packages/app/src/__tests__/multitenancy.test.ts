@@ -232,4 +232,78 @@ describe('Multi-Tenant Isolation in Multi-User Mode', () => {
     const dataB = (await resB.json()) as { profile: { name: string } };
     expect(dataB.profile.name).toBe('Bob in Bunker');
   });
+
+  it('isolates NIP-46 client authorization between tenants', () => {
+    const userASk = generateSecretKey();
+    const userAPk = getPublicKey(userASk);
+    const userBSk = generateSecretKey();
+    const userBPk = getPublicKey(userBSk);
+
+    const clientSk = generateSecretKey();
+    const clientPk = getPublicKey(clientSk);
+
+    const bunker = new BunkerService(db);
+
+    // User A generates bunker URI and connects Client
+    const uriA = bunker.generateBunkerUri(userAPk);
+    const secretA = new URL(uriA.replace('bunker://', 'http://')).searchParams.get('secret')!;
+    const connectRes = bunker.connectClient(clientPk, secretA, userAPk);
+    expect(connectRes.success).toBe(true);
+
+    // Client is authorized under User A
+    expect(() => bunker.assertAuthorized(clientPk, 'sign_event', 1, userAPk)).not.toThrow();
+
+    // Client is NOT authorized under User B -> throws error
+    expect(() => bunker.assertAuthorized(clientPk, 'sign_event', 1, userBPk)).toThrow();
+
+    // signEvent under User A works
+    const template = {
+      kind: 1,
+      content: 'Hello from User A',
+      tags: [],
+      created_at: Math.floor(Date.now() / 1000),
+    };
+    expect(() => bunker.signEvent(clientPk, template, userAPk)).not.toThrow();
+
+    // signEvent under User B fails authorization
+    expect(() => bunker.signEvent(clientPk, template, userBPk)).toThrow();
+  });
+
+  it('isolates relay discovery and lists between tenants', () => {
+    const userASk = generateSecretKey();
+    const userAPk = getPublicKey(userASk);
+    const userBSk = generateSecretKey();
+    const userBPk = getPublicKey(userBSk);
+
+    const bunker = new BunkerService(db);
+
+    // User A creates connection with custom relay
+    bunker.createConnection(
+      {
+        name: 'User A Connection',
+        nsec: bytesToHex(generateSecretKey()),
+        relays: ['wss://relay.user-a.com'],
+      },
+      userAPk
+    );
+
+    // User B creates connection with different relay
+    bunker.createConnection(
+      {
+        name: 'User B Connection',
+        nsec: bytesToHex(generateSecretKey()),
+        relays: ['wss://relay.user-b.com'],
+      },
+      userBPk
+    );
+
+    const relaysA = bunker.getRelayUrls(userAPk);
+    const relaysB = bunker.getRelayUrls(userBPk);
+
+    expect(relaysA).toContain('wss://relay.user-a.com');
+    expect(relaysA).not.toContain('wss://relay.user-b.com');
+
+    expect(relaysB).toContain('wss://relay.user-b.com');
+    expect(relaysB).not.toContain('wss://relay.user-a.com');
+  });
 });
