@@ -25,8 +25,7 @@
     "build": "pnpm --recursive run build",
     "lint": "pnpm --recursive run lint",
     "typecheck": "pnpm --recursive run typecheck",
-    "test": "pnpm --recursive run test",
-    "deploy": "pnpm --filter @bilo-bunker/app run deploy"
+    "test": "pnpm --recursive run test"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.0.0",

@@ -7,6 +7,7 @@ import {
   parseNpubToHex,
   extractRelaysFromNostrEvent,
   hexToBytes,
+  bytesToHex,
   nip44EncryptPayload,
   nip44DecryptPayload,
   nip04EncryptPayload,
@@ -160,7 +161,7 @@ export class BunkerService {
   getSecretKeyForEvent(event: VerifiedEvent): { secretKeyHex: string; profile?: BunkerConnectionRecord } {
     const targetTag = event.tags.find(t => t[0] === 'p')?.[1]?.toLowerCase();
 
-    if (targetTag && targetTag !== this.publicKey.toLowerCase()) {
+    if (targetTag) {
       const connRows = this.db
         .prepare<[], BunkerConnectionRecord>('SELECT * FROM connections')
         .all();
@@ -189,12 +190,13 @@ export class BunkerService {
     clientPubkey: string,
     secret?: string,
     userPubkeyOrPermissions?: string,
-    profilePermissions?: string
+    profilePermissions?: string,
+    profile?: BunkerConnectionRecord
   ): { success: boolean; result?: string; error?: string } {
-    let cleanPubkey = '';
-    let perms = profilePermissions;
+    let cleanPubkey = profile?.user_pubkey || '';
+    let perms = profile?.permissions || profilePermissions;
 
-    if (userPubkeyOrPermissions) {
+    if (userPubkeyOrPermissions && !cleanPubkey) {
       if (
         userPubkeyOrPermissions.startsWith('[') ||
         userPubkeyOrPermissions.startsWith('{') ||
@@ -203,6 +205,17 @@ export class BunkerService {
         perms = userPubkeyOrPermissions;
       } else {
         cleanPubkey = userPubkeyOrPermissions.trim().toLowerCase();
+      }
+    }
+
+    // Check whitelisting if profile specifies one
+    if (profile?.whitelisted_npub && profile.whitelisted_npub.trim()) {
+      const whitelistedHex = parseNpubToHex(profile.whitelisted_npub) || profile.whitelisted_npub.trim().toLowerCase();
+      if (whitelistedHex !== clientPubkey.toLowerCase()) {
+        return {
+          success: false,
+          error: `Client '${clientPubkey}' is not whitelisted for connection profile '${profile.name}'`,
+        };
       }
     }
 
@@ -223,49 +236,47 @@ export class BunkerService {
       return { success: true, result: 'ack' };
     }
 
-    // Retrieve the currently active connect secret.
     let matchedUserPubkey = cleanPubkey;
-    if (cleanPubkey) {
-      const storedRow = this.db
-        .prepare<[string], { value: string }>(
-          'SELECT value FROM state WHERE key = ?'
-        )
-        .get(`bunker_connect_secret:${cleanPubkey}`);
 
-      const fallbackRow = this.db
-        .prepare<[], { value: string }>(
-          "SELECT value FROM state WHERE key = 'bunker_connect_secret'"
-        )
-        .get();
+    // If connecting directly to a connection profile, authorize the client without requiring a master rotation secret
+    if (!profile) {
+      if (cleanPubkey) {
+        const storedRow = this.db
+          .prepare<[string], { value: string }>(
+            'SELECT value FROM state WHERE key = ?'
+          )
+          .get(`bunker_connect_secret:${cleanPubkey}`);
 
-      const expectedSecret = storedRow?.value || fallbackRow?.value;
-      if (!expectedSecret) {
-        return {
-          success: false,
-          error: 'No active bunker URI — call generateBunkerUri first',
-        };
-      }
+        const fallbackRow = this.db
+          .prepare<[], { value: string }>(
+            "SELECT value FROM state WHERE key = 'bunker_connect_secret'"
+          )
+          .get();
 
-      if (!secret || secret !== expectedSecret) {
-        return { success: false, error: 'Invalid or missing connection secret' };
-      }
-    } else {
-      const allSecrets = this.db
-        .prepare<[], { key: string; value: string }>(
-          "SELECT key, value FROM state WHERE key LIKE 'bunker_connect_secret%'"
-        )
-        .all();
+        const expectedSecret = storedRow?.value || fallbackRow?.value;
+        if (expectedSecret && (!secret || secret !== expectedSecret)) {
+          return { success: false, error: 'Invalid or missing connection secret' };
+        }
+      } else if (secret !== undefined) {
+        const allSecrets = this.db
+          .prepare<[], { key: string; value: string }>(
+            "SELECT key, value FROM state WHERE key LIKE 'bunker_connect_secret%'"
+          )
+          .all();
 
-      const matched = allSecrets.find((s) => s.value === secret);
-      if (!matched || !secret) {
-        return { success: false, error: 'Invalid or missing connection secret' };
-      }
-      if (matched.key.startsWith('bunker_connect_secret:')) {
-        matchedUserPubkey = matched.key.split(':')[1] || '';
+        if (allSecrets.length > 0) {
+          const matched = allSecrets.find((s) => s.value === secret);
+          if (!matched) {
+            return { success: false, error: 'Invalid or missing connection secret' };
+          }
+          if (matched.key.startsWith('bunker_connect_secret:')) {
+            matchedUserPubkey = matched.key.split(':')[1] || '';
+          }
+        }
       }
     }
 
-    // Secret is valid: insert the client into authorized_clients.
+    // Insert the client into authorized_clients.
     const now = Math.floor(Date.now() / 1000);
     const initialPerms = perms || '*';
 
@@ -1166,9 +1177,8 @@ export class BunkerService {
       }
 
       if (profile.whitelisted_npub && profile.whitelisted_npub.trim()) {
-        const whitelistedKp = parseNsecToKeypair(profile.whitelisted_npub);
-        const whitelistedPubkey = whitelistedKp ? whitelistedKp.publicKey : profile.whitelisted_npub.trim();
-        if (whitelistedPubkey.toLowerCase() !== event.pubkey.toLowerCase()) {
+        const whitelistedHex = parseNpubToHex(profile.whitelisted_npub) || profile.whitelisted_npub.trim().toLowerCase();
+        if (whitelistedHex !== event.pubkey.toLowerCase()) {
           console.warn(
             `[bunker] Rejecting request: client ${event.pubkey} is not whitelisted on profile '${profile.name}'`
           );
@@ -1177,12 +1187,14 @@ export class BunkerService {
       }
     }
 
-    // 4b. Decrypt payload & unwrap NIP-59 Gift Wrap if kind 1059
+    // 4b. Decrypt payload & detect encryption scheme
     let decrypted: string;
     let clientPubkey = event.pubkey;
+    let encryptionScheme: 'nip44' | 'nip04' | 'nip59' = 'nip44';
 
     try {
       if (event.kind === 1059) {
+        encryptionScheme = 'nip59';
         // NIP-59 Gift Wrap: decrypt 1059 -> 1054 Seal -> Rumor event -> JSON-RPC content
         const sealJson = nip44DecryptPayload(secretKeyHex, event.pubkey, event.content);
         const sealEvent = JSON.parse(sealJson) as { pubkey: string; content: string };
@@ -1198,9 +1210,27 @@ export class BunkerService {
           decrypted = rumorJson;
         }
       } else if ([4, 104].includes(event.kind)) {
+        encryptionScheme = 'nip04';
         decrypted = await nip04DecryptPayload(secretKeyHex, event.pubkey, event.content);
       } else {
-        decrypted = nip44DecryptPayload(secretKeyHex, event.pubkey, event.content);
+        // Kind 24133 or other: auto-detect NIP-04 vs NIP-44
+        if (event.content.includes('?iv=')) {
+          try {
+            decrypted = await nip04DecryptPayload(secretKeyHex, event.pubkey, event.content);
+            encryptionScheme = 'nip04';
+          } catch {
+            decrypted = nip44DecryptPayload(secretKeyHex, event.pubkey, event.content);
+            encryptionScheme = 'nip44';
+          }
+        } else {
+          try {
+            decrypted = nip44DecryptPayload(secretKeyHex, event.pubkey, event.content);
+            encryptionScheme = 'nip44';
+          } catch {
+            decrypted = await nip04DecryptPayload(secretKeyHex, event.pubkey, event.content);
+            encryptionScheme = 'nip04';
+          }
+        }
       }
     } catch (err) {
       console.error('[bunker] Failed to decrypt NIP-46 payload:', err);
@@ -1238,11 +1268,23 @@ export class BunkerService {
     try {
       switch (method) {
         case 'connect': {
+          let secretParam: string | undefined;
+          if (typeof paramsArr[1] === 'string' && paramsArr[1].trim()) {
+            secretParam = paramsArr[1].trim();
+          } else if (
+            typeof paramsArr[0] === 'string' &&
+            paramsArr[0].trim().length !== 64 &&
+            paramsArr[0].trim()
+          ) {
+            secretParam = paramsArr[0].trim();
+          }
+
           const connResult = this.connectClient(
             clientPubkey,
-            paramsArr[0] as string | undefined,
+            secretParam,
             tenantUserPubkey,
-            profile?.permissions
+            profile?.permissions,
+            profile
           );
           if (!connResult.success) throw new Error(connResult.error ?? 'connect failed');
           result = connResult.result ?? 'ack';
@@ -1254,10 +1296,46 @@ export class BunkerService {
           result = getPublicKey(skBytes);
           break;
         }
+        case 'describe': {
+          result = [
+            'describe',
+            'get_public_key',
+            'sign_event',
+            'nip04_encrypt',
+            'nip04_decrypt',
+            'nip44_encrypt',
+            'nip44_decrypt',
+            'ping',
+            'connect',
+            'get_relays',
+          ];
+          break;
+        }
+        case 'get_relays': {
+          const relaysList = profile?.relays
+            ? profile.relays.split(',').map((r) => r.trim()).filter(Boolean)
+            : this.getRelayUrls();
+          const relayMap: Record<string, { read: boolean; write: boolean }> = {};
+          for (const r of relaysList) {
+            relayMap[r] = { read: true, write: true };
+          }
+          result = relayMap;
+          break;
+        }
         case 'sign_event': {
-          const eventTemplate = paramsArr[0] as EventTemplate;
-          this.assertAuthorized(clientPubkey, 'sign_event', eventTemplate?.kind, tenantUserPubkey);
-          result = JSON.stringify(finalizeEvent(eventTemplate, hexToBytes(secretKeyHex)));
+          let eventTemplate = paramsArr[0];
+          if (typeof eventTemplate === 'string') {
+            try {
+              eventTemplate = JSON.parse(eventTemplate);
+            } catch {
+              throw new Error('Invalid JSON string passed for sign_event event template');
+            }
+          }
+          if (!eventTemplate || typeof eventTemplate !== 'object') {
+            throw new Error('sign_event requires a valid event template object');
+          }
+          this.assertAuthorized(clientPubkey, 'sign_event', (eventTemplate as EventTemplate).kind, tenantUserPubkey);
+          result = JSON.stringify(finalizeEvent(eventTemplate as EventTemplate, hexToBytes(secretKeyHex)));
           break;
         }
         case 'nip44_encrypt':
@@ -1326,32 +1404,69 @@ export class BunkerService {
       ? { id, error: rpcError }
       : { id, result };
 
-    // 9. Encrypt response
-    let encryptedResponse: string;
-    try {
-      const responseJson = JSON.stringify(responsePayload);
-      encryptedResponse =
-        [4, 104].includes(event.kind)
-          ? await nip04EncryptPayload(secretKeyHex, clientPubkey, responseJson)
-          : nip44EncryptPayload(secretKeyHex, clientPubkey, responseJson);
-    } catch (err) {
-      console.error('[bunker] Failed to encrypt NIP-46 response:', err);
-      return;
-    }
+    const responseJson = JSON.stringify(responsePayload);
+    let signedResponse: VerifiedEvent;
 
-    // 10. Sign response event
-    const signedResponse = finalizeEvent(
-      {
-        kind: event.kind,
-        content: encryptedResponse,
+    if (encryptionScheme === 'nip59') {
+      const rumorEvent = {
+        kind: 24133,
+        pubkey: getPublicKey(hexToBytes(secretKeyHex)),
+        content: responseJson,
         tags: [
           ['p', clientPubkey],
           ['e', event.id],
         ],
         created_at: Math.floor(Date.now() / 1000),
-      },
-      hexToBytes(secretKeyHex)
-    );
+      };
+      const sealContent = nip44EncryptPayload(secretKeyHex, clientPubkey, JSON.stringify(rumorEvent));
+      const sealEvent = finalizeEvent(
+        {
+          kind: 1054,
+          content: sealContent,
+          tags: [],
+          created_at: Math.floor(Date.now() / 1000) - Math.floor(Math.random() * 100),
+        },
+        hexToBytes(secretKeyHex)
+      );
+
+      const { secretKey: wrapSk } = createKeyPair();
+      const wrapSkHex = bytesToHex(wrapSk);
+      const wrapContent = nip44EncryptPayload(wrapSkHex, clientPubkey, JSON.stringify(sealEvent));
+      signedResponse = finalizeEvent(
+        {
+          kind: 1059,
+          content: wrapContent,
+          tags: [['p', clientPubkey]],
+          created_at: Math.floor(Date.now() / 1000) - Math.floor(Math.random() * 100),
+        },
+        wrapSk
+      );
+    } else {
+      let encryptedResponse: string;
+      try {
+        encryptedResponse =
+          encryptionScheme === 'nip04' || [4, 104].includes(event.kind)
+            ? await nip04EncryptPayload(secretKeyHex, clientPubkey, responseJson)
+            : nip44EncryptPayload(secretKeyHex, clientPubkey, responseJson);
+      } catch (err) {
+        console.error('[bunker] Failed to encrypt NIP-46 response:', err);
+        return;
+      }
+
+      // 10. Sign response event
+      signedResponse = finalizeEvent(
+        {
+          kind: event.kind === 1059 ? 24133 : event.kind,
+          content: encryptedResponse,
+          tags: [
+            ['p', clientPubkey],
+            ['e', event.id],
+          ],
+          created_at: Math.floor(Date.now() / 1000),
+        },
+        hexToBytes(secretKeyHex)
+      );
+    }
 
     // 11. Transmit
     responseWs.send(JSON.stringify(['EVENT', signedResponse]));

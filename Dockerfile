@@ -31,6 +31,9 @@ RUN pnpm --filter @bilo-bunker/app build
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS runner
 
+# Install su-exec for safe step-down to non-root user in entrypoint
+RUN apk add --no-cache su-exec
+
 # Create non-root user and persistent database volume directory
 RUN addgroup -S bunker && adduser -S bunker -G bunker && \
     mkdir -p /data /app && chown -R bunker:bunker /data /app
@@ -46,6 +49,8 @@ COPY --from=builder /workspace/packages/worker/public ./public
 
 # Copy deployment and installer scripts
 COPY --from=builder /workspace/scripts ./scripts
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Install production dependencies only
 RUN npm install --omit=dev
@@ -67,7 +72,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD wget -qO- http://localhost:3000/api/v1/health || exit 1
 
-# Drop privileges to non-root container user
-USER bunker
-
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "dist/index.js"]

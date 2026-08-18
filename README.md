@@ -149,9 +149,6 @@ make docker-shell
 # Create transaction-consistent SQLite database backup
 make backup
 
-# Deploy via SSH to remote VPS host
-make deploy-remote
-
 # One-step installer execution
 make install-remote
 ```
@@ -167,7 +164,7 @@ bilo-bunker/
 ├── Dockerfile            # Unified production multi-stage build
 ├── docker-compose.yml    # Production service orchestration
 ├── Makefile              # Developer automation shortcuts
-├── scripts/              # Setup & deployment scripts (blackstart.sh, deploy.sh, install.sh)
+├── scripts/              # Setup & deployment scripts (blackstart.sh, install.sh)
 ├── packages/
 │   ├── app/              # Hono Node.js backend engine & SQLite persistence
 │   └── ui/               # TailAdmin React SPA & NIP-07 Dashboard

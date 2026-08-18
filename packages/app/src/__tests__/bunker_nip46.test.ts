@@ -1,9 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { generateSecretKey, getPublicKey } from 'nostr-tools';
+import { generateSecretKey, getPublicKey, finalizeEvent, verifyEvent } from 'nostr-tools';
 import { runMigrations } from '../db/migrations.js';
 import { BunkerService } from '../services/bunker.js';
-import { bytesToHex } from '../services/nostr.js';
+import {
+  bytesToHex,
+  nip04EncryptPayload,
+  nip04DecryptPayload,
+  nip44EncryptPayload,
+  nip44DecryptPayload,
+} from '../services/nostr.js';
 import type { WebSocket } from 'ws';
 
 describe('BunkerService NIP-46 & Relay Merging', () => {
@@ -120,36 +126,271 @@ describe('BunkerService NIP-46 & Relay Merging', () => {
     expect(res).toBe('pong');
   });
 
-  it('should include both p and e tags in NIP-46 response event', async () => {
+  it('should process NIP-04 encrypted kind 24133 request and respond with NIP-04', async () => {
     const clientSk = generateSecretKey();
+    const clientSkHex = bytesToHex(clientSk);
     const clientPk = getPublicKey(clientSk);
     const bunkerPk = bunker.getPublicKey();
 
-    // Simulate encrypted ping request event
-    const reqEvent = {
-      id: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-      pubkey: clientPk,
+    // Pre-authorize client
+    bunker.connectClient(clientPk);
+
+    // Build NIP-04 encrypted RPC request
+    const rpcRequest = { id: 'req-nip04-1', method: 'describe', params: [] };
+    const ciphertext = await nip04EncryptPayload(clientSkHex, bunkerPk, JSON.stringify(rpcRequest));
+
+    const inboundEvent = finalizeEvent(
+      {
+        kind: 24133,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [['p', bunkerPk]],
+        content: ciphertext,
+      },
+      clientSk
+    );
+
+    let sentFrame = '';
+    const mockWs = {
+      readyState: 1,
+      send: (msg: string) => {
+        sentFrame = msg;
+      },
+    } as unknown as WebSocket;
+
+    await bunker.handleNip46Request(inboundEvent, mockWs);
+
+    expect(sentFrame).toBeTruthy();
+    const [tag, responseEvent] = JSON.parse(sentFrame);
+    expect(tag).toBe('EVENT');
+    expect(responseEvent.kind).toBe(24133);
+    expect(verifyEvent(responseEvent)).toBe(true);
+
+    // Decrypt response with client key using NIP-04
+    const decryptedJson = await nip04DecryptPayload(clientSkHex, bunkerPk, responseEvent.content);
+    const responsePayload = JSON.parse(decryptedJson);
+
+    expect(responsePayload.id).toBe('req-nip04-1');
+    expect(Array.isArray(responsePayload.result)).toBe(true);
+    expect(responsePayload.result).toContain('sign_event');
+  });
+
+  it('should process NIP-44 encrypted kind 24133 request and respond with NIP-44', async () => {
+    const clientSk = generateSecretKey();
+    const clientSkHex = bytesToHex(clientSk);
+    const clientPk = getPublicKey(clientSk);
+    const bunkerPk = bunker.getPublicKey();
+
+    // Pre-authorize client
+    bunker.connectClient(clientPk);
+
+    // Build NIP-44 encrypted RPC request
+    const rpcRequest = { id: 'req-nip44-1', method: 'get_relays', params: [] };
+    const ciphertext = nip44EncryptPayload(clientSkHex, bunkerPk, JSON.stringify(rpcRequest));
+
+    const inboundEvent = finalizeEvent(
+      {
+        kind: 24133,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [['p', bunkerPk]],
+        content: ciphertext,
+      },
+      clientSk
+    );
+
+    let sentFrame = '';
+    const mockWs = {
+      readyState: 1,
+      send: (msg: string) => {
+        sentFrame = msg;
+      },
+    } as unknown as WebSocket;
+
+    await bunker.handleNip46Request(inboundEvent, mockWs);
+
+    expect(sentFrame).toBeTruthy();
+    const [tag, responseEvent] = JSON.parse(sentFrame);
+    expect(tag).toBe('EVENT');
+    expect(responseEvent.kind).toBe(24133);
+    expect(verifyEvent(responseEvent)).toBe(true);
+
+    // Decrypt response with client key using NIP-44
+    const decryptedJson = nip44DecryptPayload(clientSkHex, bunkerPk, responseEvent.content);
+    const responsePayload = JSON.parse(decryptedJson);
+
+    expect(responsePayload.id).toBe('req-nip44-1');
+    expect(responsePayload.result).toBeDefined();
+    expect(typeof responsePayload.result).toBe('object');
+  });
+
+  it('should handle sign_event when event template is passed as a serialized JSON string', async () => {
+    const clientSk = generateSecretKey();
+    const clientSkHex = bytesToHex(clientSk);
+    const clientPk = getPublicKey(clientSk);
+    const bunkerPk = bunker.getPublicKey();
+
+    bunker.connectClient(clientPk);
+
+    const eventTemplate = {
+      kind: 1,
+      content: 'Hello Nostr from Bilo Bunker!',
+      tags: [],
       created_at: Math.floor(Date.now() / 1000),
-      kind: 24133,
-      tags: [['p', bunkerPk]],
-      content: 'fake_encrypted_content',
-      sig: 'fake_sig',
     };
 
-    // Pre-insert client authorization
-    db.prepare(
-      `INSERT INTO authorized_clients (client_pubkey, permissions, created_at, updated_at)
-       VALUES (?, ?, ?, ?)`
-    ).run(clientPk, '*', Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000));
+    // Client passes template as stringified JSON in params[0]
+    const rpcRequest = {
+      id: 'req-sign-1',
+      method: 'sign_event',
+      params: [JSON.stringify(eventTemplate)],
+    };
 
-    // Verify NIP-46 response tags structure includes both 'p' and 'e' tags
-    const mockSignedResponseTags = [
-      ['p', clientPk],
-      ['e', reqEvent.id],
-    ];
+    const ciphertext = nip44EncryptPayload(clientSkHex, bunkerPk, JSON.stringify(rpcRequest));
+    const inboundEvent = finalizeEvent(
+      {
+        kind: 24133,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [['p', bunkerPk]],
+        content: ciphertext,
+      },
+      clientSk
+    );
 
-    expect(mockSignedResponseTags).toContainEqual(['p', clientPk]);
-    expect(mockSignedResponseTags).toContainEqual(['e', reqEvent.id]);
+    let sentFrame = '';
+    const mockWs = {
+      readyState: 1,
+      send: (msg: string) => {
+        sentFrame = msg;
+      },
+    } as unknown as WebSocket;
+
+    await bunker.handleNip46Request(inboundEvent, mockWs);
+
+    expect(sentFrame).toBeTruthy();
+    const [, responseEvent] = JSON.parse(sentFrame);
+    const decryptedJson = nip44DecryptPayload(clientSkHex, bunkerPk, responseEvent.content);
+    const responsePayload = JSON.parse(decryptedJson);
+
+    expect(responsePayload.id).toBe('req-sign-1');
+    expect(responsePayload.error).toBeUndefined();
+    expect(responsePayload.result).toBeTruthy();
+
+    const signedEvent = JSON.parse(responsePayload.result);
+    expect(signedEvent.kind).toBe(1);
+    expect(signedEvent.content).toBe('Hello Nostr from Bilo Bunker!');
+    expect(signedEvent.pubkey).toBe(bunkerPk);
+    expect(verifyEvent(signedEvent)).toBe(true);
+  });
+
+  it('should connect to custom connection profile and sign with connection profile nsec', async () => {
+    const profileSk = generateSecretKey();
+    const profileSkHex = bytesToHex(profileSk);
+    const profilePk = getPublicKey(profileSk);
+
+    // Create custom connection profile
+    bunker.createConnection(
+      {
+        name: 'Damus Mobile',
+        nsec: profileSkHex,
+        relays: 'wss://relay.damus.io',
+      },
+      '46f3c7bb33cc3019049b76dc89dbb96e34c247bdda68b6ad8632682793ff8a1a'
+    );
+
+    const clientSk = generateSecretKey();
+    const clientSkHex = bytesToHex(clientSk);
+    const clientPk = getPublicKey(clientSk);
+
+    // 1. Client connects to profile pubkey without requiring global secret
+    const connectReq = {
+      id: 'conn-1',
+      method: 'connect',
+      params: [profilePk],
+    };
+    const connCiphertext = nip44EncryptPayload(clientSkHex, profilePk, JSON.stringify(connectReq));
+    const connInbound = finalizeEvent(
+      {
+        kind: 24133,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [['p', profilePk]],
+        content: connCiphertext,
+      },
+      clientSk
+    );
+
+    let connSent = '';
+    const mockWs = {
+      readyState: 1,
+      send: (msg: string) => {
+        connSent = msg;
+      },
+    } as unknown as WebSocket;
+
+    await bunker.handleNip46Request(connInbound, mockWs);
+    const [, connResEvent] = JSON.parse(connSent);
+    const connResPayload = JSON.parse(nip44DecryptPayload(clientSkHex, profilePk, connResEvent.content));
+    expect(connResPayload.result).toBe('ack');
+    expect(bunker.getAuthorizedClients('46f3c7bb33cc3019049b76dc89dbb96e34c247bdda68b6ad8632682793ff8a1a').some(c => c.client_pubkey === clientPk)).toBe(true);
+
+    // 2. Client calls get_public_key on connection profile
+    const getPkReq = { id: 'getpk-1', method: 'get_public_key', params: [] };
+    const getPkCiphertext = nip44EncryptPayload(clientSkHex, profilePk, JSON.stringify(getPkReq));
+    const getPkInbound = finalizeEvent(
+      {
+        kind: 24133,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [['p', profilePk]],
+        content: getPkCiphertext,
+      },
+      clientSk
+    );
+
+    let getPkSent = '';
+    const mockWs2 = {
+      readyState: 1,
+      send: (msg: string) => {
+        getPkSent = msg;
+      },
+    } as unknown as WebSocket;
+
+    await bunker.handleNip46Request(getPkInbound, mockWs2);
+    const [, getPkResEvent] = JSON.parse(getPkSent);
+    const getPkResPayload = JSON.parse(nip44DecryptPayload(clientSkHex, profilePk, getPkResEvent.content));
+    expect(getPkResPayload.result).toBe(profilePk);
+
+    // 3. Client calls sign_event on connection profile
+    const signReq = {
+      id: 'sign-conn-1',
+      method: 'sign_event',
+      params: [{ kind: 1, content: 'Signed via connection profile nsec', tags: [], created_at: Math.floor(Date.now() / 1000) }],
+    };
+    const signCiphertext = nip44EncryptPayload(clientSkHex, profilePk, JSON.stringify(signReq));
+    const signInbound = finalizeEvent(
+      {
+        kind: 24133,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [['p', profilePk]],
+        content: signCiphertext,
+      },
+      clientSk
+    );
+
+    let signSent = '';
+    const mockWs3 = {
+      readyState: 1,
+      send: (msg: string) => {
+        signSent = msg;
+      },
+    } as unknown as WebSocket;
+
+    await bunker.handleNip46Request(signInbound, mockWs3);
+    const [, signResEvent] = JSON.parse(signSent);
+    const signResPayload = JSON.parse(nip44DecryptPayload(clientSkHex, profilePk, signResEvent.content));
+
+    expect(signResPayload.error).toBeUndefined();
+    const signedEvent = JSON.parse(signResPayload.result);
+    expect(signedEvent.pubkey).toBe(profilePk);
+    expect(signedEvent.content).toBe('Signed via connection profile nsec');
+    expect(verifyEvent(signedEvent)).toBe(true);
   });
 });
 

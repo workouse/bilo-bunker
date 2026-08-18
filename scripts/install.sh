@@ -272,6 +272,7 @@ if [ "$ACTION_MODE" != "update" ]; then
 
   echo -e "\n${BOLD}Writing environment configuration (.env)...${RESET}"
   {
+    echo "COMPOSE_PROJECT_NAME=bunker"
     echo "DOMAIN=$DOMAIN"
     if [ -n "$OWNER_PUBKEY_VAL" ]; then
       echo "OWNER_PUBKEY=$OWNER_PUBKEY_VAL"
@@ -297,6 +298,8 @@ DOMAIN="${DOMAIN:-localhost}"
 if [ ! -f "docker-compose.yml" ] || [ "$ACTION_MODE" = "reinstall" ]; then
   echo -e "${BOLD}Writing production docker-compose.yml...${RESET}"
   cat <<'EOF' > docker-compose.yml
+name: bunker
+
 services:
   app:
     image: ghcr.io/workouse/bilo-bunker:latest
@@ -305,9 +308,10 @@ services:
       - path: .env
         required: false
     volumes:
-      - sqlite_data:/data
+      - ./data:/data
     networks:
       - internal
+      - external
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/v1/health"]
       interval: 30s
@@ -344,7 +348,6 @@ networks:
     driver: bridge
 
 volumes:
-  sqlite_data:
   caddy_data:
   caddy_config:
 EOF

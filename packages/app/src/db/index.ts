@@ -5,34 +5,38 @@ import { runMigrations } from './migrations.js';
 
 /**
  * Resolve path to the SQLite database file.
- * Creates parent directory if missing. Falls back gracefully if /data volume lacks write permission.
+ * Creates parent directory if missing.
  */
 function resolveDatabasePath(): string {
   if (process.env.DB_PATH) {
     const customPath = process.env.DB_PATH;
-    try {
-      fs.mkdirSync(path.dirname(customPath), { recursive: true });
-    } catch {
-      // ignore
+    if (customPath !== ':memory:') {
+      try {
+        fs.mkdirSync(path.dirname(customPath), { recursive: true });
+      } catch (err) {
+        console.error(`[db] Failed to create parent directory for DB_PATH '${customPath}':`, err);
+      }
     }
     return customPath;
   }
 
-  // Attempt to use /data/bunker.db if /data is writable
-  try {
-    fs.mkdirSync('/data', { recursive: true });
-    fs.accessSync('/data', fs.constants.W_OK);
-    return '/data/bunker.db';
-  } catch {
-    // /data is not writable (e.g. host volume owned by root), fallback to ./data/bunker.db inside workdir
-    const localDir = path.resolve(process.cwd(), 'data');
+  if (process.env.NODE_ENV === 'production') {
     try {
-      fs.mkdirSync(localDir, { recursive: true });
+      fs.mkdirSync('/data', { recursive: true });
     } catch {
-      // ignore
+      // directory creation attempt
     }
-    return path.join(localDir, 'bunker.db');
+    return '/data/bunker.db';
   }
+
+  // Development/local default: ./data/bunker.db
+  const localDir = path.resolve(process.cwd(), 'data');
+  try {
+    fs.mkdirSync(localDir, { recursive: true });
+  } catch {
+    // ignore
+  }
+  return path.join(localDir, 'bunker.db');
 }
 
 const targetPath = resolveDatabasePath();
@@ -42,14 +46,9 @@ try {
   dbInstance = new Database(targetPath);
   console.log(`[db] Connected to SQLite database at: ${targetPath}`);
 } catch (err) {
-  const code = (err as { code?: string }).code;
-  if (code === 'SQLITE_CANTOPEN') {
-    const fallbackPath = path.resolve(process.cwd(), 'bunker.db');
-    console.warn(`[db] Unable to open '${targetPath}'. Falling back to '${fallbackPath}'`);
-    dbInstance = new Database(fallbackPath);
-  } else {
-    throw err;
-  }
+  console.error(`[db] FATAL: Unable to open SQLite database at '${targetPath}'.`);
+  console.error(`[db] Ensure that the target directory exists and has write permissions for the application user.`);
+  throw err;
 }
 
 export const db = dbInstance;

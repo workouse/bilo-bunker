@@ -229,12 +229,14 @@ export class RelayManager {
 
   /**
    * Send a REQ subscription to the relay for all NIP-46 event kinds
-   * addressed to the bunker's public key. The `since` filter is set to
-   * the last successfully processed event timestamp minus a safety buffer (60s)
-   * so that events are not missed across reconnects or minor clock skew.
+   * addressed to all managed public keys.
+   * Kinds 4, 104, 1059 use a safe since window to catch up across restarts.
+   * Kind 24133 ephemeral events omit restrictive since to prevent public relays
+   * from dropping live events due to clock skew.
    */
   private subscribe(ws: WebSocket): void {
     const pubkeys = this.bunker.getAllPublicKeys();
+    if (pubkeys.length === 0) return;
 
     const sinceRow = this.db
       .prepare<[], { value: string }>(
@@ -242,15 +244,16 @@ export class RelayManager {
       )
       .get();
 
-    // Apply 3600s safety margin to since filter to account for clock skew and network latency
+    // 24-hour safety buffer for historical events so stored requests are not missed across reconnects
     const since = sinceRow
-      ? Math.max(0, Number(sinceRow.value) - 3_600)
+      ? Math.max(0, Number(sinceRow.value) - 86_400)
       : Math.floor(Date.now() / 1000) - 86_400;
 
     const req = [
       'REQ',
       SUBSCRIPTION_ID,
-      { kinds: [4, 104, 24133, 1059], '#p': pubkeys, since },
+      { kinds: [4, 104, 1059], '#p': pubkeys, since },
+      { kinds: [24133], '#p': pubkeys },
     ];
 
     ws.send(JSON.stringify(req));
@@ -259,6 +262,24 @@ export class RelayManager {
         (ws as WebSocket & { url?: string }).url ?? 'unknown'
       }`
     );
+  }
+
+  /**
+   * Re-send subscriptions across all open WebSocket connections with latest pubkeys.
+   * Called when connection profiles are added, updated, or removed.
+   */
+  resubscribeAll(): void {
+    const pubkeys = this.bunker.getAllPublicKeys();
+    console.log(`[relay] Resubscribing all open relay connections with ${pubkeys.length} pubkey(s)`);
+    for (const ws of this.connections.values()) {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          this.subscribe(ws);
+        } catch (err) {
+          console.warn('[relay] Failed to resubscribe socket:', err);
+        }
+      }
+    }
   }
 
   // ── 6.5 handleMessage(relayUrl, raw) ─────────────────────────────────────────
@@ -379,6 +400,8 @@ export class RelayManager {
         this.connect(url);
       }
     }
+
+    this.resubscribeAll();
   }
 
   // ── 6.8 stop() ───────────────────────────────────────────────────────────────

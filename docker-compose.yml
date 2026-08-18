@@ -1,3 +1,5 @@
+name: bunker
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Services
 # ─────────────────────────────────────────────────────────────────────────────
@@ -13,7 +15,7 @@ services:
       - path: .env
         required: false
     volumes:
-      - sqlite_data:/data
+      - ./data:/data
     networks:
       - internal
       - external
@@ -63,9 +65,6 @@ networks:
 # Volumes
 # ─────────────────────────────────────────────────────────────────────────────
 volumes:
-  # SQLite database volume — persists data across container rebuilds.
-  sqlite_data:
-
   # Caddy TLS certificate data volume — persists TLS certificates across restarts.
   caddy_data:
 

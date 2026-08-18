@@ -17,22 +17,12 @@ echo -e "${RESET}"
 
 # 1. Pre-flight check for required tools
 echo -e "${BOLD}Checking required local tools...${RESET}"
-MISSING_TOOLS=()
-for tool in docker rsync ssh; do
-  if ! command -v "$tool" &>/dev/null; then
-    MISSING_TOOLS+=("$tool")
-  fi
-done
-
-if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
-  echo -e "${RED}Error: The following required CLI tools are missing:${RESET}"
-  for tool in "${MISSING_TOOLS[@]}"; do
-    echo -e "  - ${YELLOW}$tool${RESET}"
-  done
-  echo -e "Please install them and run this script again."
+if ! command -v docker &>/dev/null; then
+  echo -e "${RED}Error: Docker is missing.${RESET}"
+  echo -e "Please install Docker and run this script again."
   exit 1
 fi
-echo -e "${GREEN}✓ All required local tools (docker, rsync, ssh) are present.${RESET}\n"
+echo -e "${GREEN}✓ Docker engine is present.${RESET}\n"
 
 # Helper prompt function (reads from /dev/tty when piped, or uses default)
 prompt() {
@@ -122,18 +112,6 @@ done
 # DEFAULT_RELAYS
 DEFAULT_RELAYS=$(prompt "Default Relays" "wss://relay.damus.io,wss://relay.nostr.band,wss://nos.lol")
 
-# DEPLOY_HOST
-DEPLOY_HOST=""
-while [ -z "$DEPLOY_HOST" ]; do
-  DEPLOY_HOST=$(prompt "Deployment Host (IP or hostname of server)")
-  if [ -z "$DEPLOY_HOST" ]; then
-    echo -e "${RED}Deployment host cannot be empty.${RESET}"
-  fi
-done
-
-DEPLOY_USER=$(prompt "Deployment SSH User" "ubuntu")
-DEPLOY_KEY=$(prompt "Deployment SSH Private Key Path" "~/.ssh/id_rsa")
-
 # Summary
 echo -e "\n${BOLD}${CYAN}============================================================"
 echo "Configuration Summary"
@@ -148,9 +126,6 @@ if [ -n "$OWNER_NSEC" ]; then
 fi
 echo -e "  Cert Email:      ${GREEN}$CERTBOT_EMAIL${RESET}"
 echo -e "  Default Relays:  ${GREEN}$DEFAULT_RELAYS${RESET}"
-echo -e "  Deploy Host:     ${GREEN}$DEPLOY_HOST${RESET}"
-echo -e "  Deploy User:     ${GREEN}$DEPLOY_USER${RESET}"
-echo -e "  Deploy Key:      ${GREEN}$DEPLOY_KEY${RESET}"
 echo ""
 
 CONFIRM=$(prompt "Save these values? [y/N]" "N")
@@ -174,6 +149,7 @@ fi
 
 if [ "${WRITE_ENV:-0}" -eq 1 ]; then
   {
+    echo "COMPOSE_PROJECT_NAME=bunker"
     echo "DOMAIN=$DOMAIN"
     if [ -n "$OWNER_PUBKEY" ]; then
       echo "OWNER_PUBKEY=$OWNER_PUBKEY"
@@ -190,35 +166,14 @@ if [ "${WRITE_ENV:-0}" -eq 1 ]; then
   echo -e "${GREEN}✓ Created .env${RESET}"
 fi
 
-# Write deploy.conf
-if [ -f "deploy.conf" ]; then
-  OVERWRITE_DEPLOY=$(prompt "deploy.conf file already exists. Overwrite? [y/N]" "N")
-  if [[ "$OVERWRITE_DEPLOY" =~ ^[Yy]$ ]]; then
-    WRITE_DEPLOY=1
-  else
-    WRITE_DEPLOY=0
-    echo -e "${YELLOW}Skipping deploy.conf creation.${RESET}"
-  fi
-else
-  WRITE_DEPLOY=1
-fi
-
-if [ "${WRITE_DEPLOY:-0}" -eq 1 ]; then
-  cp deploy.conf.example deploy.conf
-  sed -i "s|^DEPLOY_HOST=.*|DEPLOY_HOST=$DEPLOY_HOST|" deploy.conf
-  sed -i "s|^DEPLOY_USER=.*|DEPLOY_USER=$DEPLOY_USER|" deploy.conf
-  sed -i "s|^DEPLOY_KEY=.*|DEPLOY_KEY=$DEPLOY_KEY|" deploy.conf
-  echo -e "${GREEN}✓ Created deploy.conf${RESET}"
-fi
-
 echo -e "\n${BOLD}${GREEN}============================================================"
 echo "⚡ Configuration complete!"
 echo "============================================================"
 echo -e "${RESET}"
 
-RUN_DEPLOY=$(prompt "Run make deploy-remote now? [y/N]" "N")
-if [[ "$RUN_DEPLOY" =~ ^[Yy]$ ]]; then
-  echo -e "${BOLD}Executing make deploy-remote...${RESET}"
-  exec make deploy-remote
+RUN_UP=$(prompt "Launch Bilo Bunker with docker compose up -d now? [y/N]" "N")
+if [[ "$RUN_UP" =~ ^[Yy]$ ]]; then
+  echo -e "${BOLD}Starting Docker containers...${RESET}"
+  docker compose up -d
 fi
 

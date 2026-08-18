@@ -63,52 +63,23 @@ Caddy will automatically request a Let's Encrypt / ZeroSSL TLS certificate for y
 
 ---
 
-## 3. Interactive First-Time Setup (`make blackstart`)
+## 3. Local Environment Setup (`make blackstart`)
 
-If deploying via SSH from a local machine, initialize deployment configuration using the setup wizard:
+To interactively generate a `.env` configuration file on your machine or VPS:
 
 ```bash
 make blackstart
 ```
 
 The setup script (`scripts/blackstart.sh`) will prompt you for:
-- **Primary Domain** (`DOMAIN` — e.g. `bunker.example.com`)
-- **Owner Public Key** (`OWNER_PUBKEY` — 64-character hex Nostr public key)
+- **Operating Mode** (Multi-User with `OWNER_PUBKEY` vs Single-User with `OWNER_NSEC`)
+- **Primary Domain** (`DOMAIN` — e.g. `bunker.example.com` or `localhost`)
 - **Email Address** (`CERTBOT_EMAIL` for TLS certificate registration)
 - **Default Relays** (comma-separated `wss://` URLs)
-- **Deployment Connection**: Host IP/hostname, SSH user, and path to private SSH key
-
-### Config Files Created (Git-Ignored)
-- `.env` — Service environment variables (loaded by Docker Compose)
-- `deploy.conf` — Deployment server configuration for SSH/rsync
 
 ---
 
-## 4. Automated Remote SSH Deployment (`make deploy-remote` / `make deploy`)
-
-Deploy updates to your remote VPS with a single command:
-
-```bash
-make deploy-remote
-# or
-make deploy
-```
-
-### Deployment Pipeline Workflow (`scripts/deploy.sh`)
-
-1. **Connectivity Check**: Tests SSH access to the deployment host.
-2. **Docker Check**: Installs Docker and Docker Compose if missing on remote server.
-3. **Release Isolation**: Creates timestamped release directory (`$DEPLOY_ROOT/releases/<TIMESTAMP>`).
-4. **File Sync**: Transfers project configurations and manifests via `rsync`.
-5. **Data Symlinking**: Symlinks shared data (`$DEPLOY_ROOT/shared/data`) to `/data` in release directory.
-6. **Atomic Symlink**: Swaps `$DEPLOY_ROOT/current` symlink.
-7. **Image Pull & Caddy Auto-SSL Launch**: Pulls latest pre-built container image (`ghcr.io/workouse/bilo-bunker:latest`) and starts stack using `docker compose pull && docker compose up -d`. Caddy manages TLS certificates automatically.
-8. **Health Check**: Polls `https://$DOMAIN/api/v1/health` until HTTP 200 OK is returned.
-9. **Release Pruning**: Cleans up old releases, retaining the last 5 releases.
-
----
-
-## 5. Alternative Deployment: Fly.io
+## 4. Alternative Deployment: Fly.io
 
 For a managed cloud container deployment without VPS infrastructure, `packages/app` can be deployed directly to [Fly.io](https://fly.io).
 
@@ -141,7 +112,7 @@ For a managed cloud container deployment without VPS infrastructure, `packages/a
 
 ---
 
-## 6. Maintenance & Application Updates
+## 5. Maintenance & Application Updates
 
 ### Option 1: Quick Update Command
 Inside your installation directory (`~/bunker`), run:
@@ -155,15 +126,14 @@ curl -fsSL https://bunker.workouse.com/install.sh | bash
 ```
 The installer automatically detects the existing installation, preserves `.env` and database volumes, pulls the newest container image, and recreates the services.
 
-### Option 3: Git-based deployment
+### Option 3: Manual Docker Compose Pull
 ```bash
-git pull origin main
-make deploy
+docker compose pull && docker compose up -d
 ```
 
 ---
 
-## 7. Database Backup & Recovery (`make backup`)
+## 6. Database Backup & Recovery (`make backup`)
 
 Bilo Bunker stores state and keys in a local SQLite database (`bunker.db`) at `/data/bunker.db`.
 
@@ -172,12 +142,13 @@ Bilo Bunker stores state and keys in a local SQLite database (`bunker.db`) at `/
 ```bash
 make backup
 ```
+Inside `~/bunker`, you can also run `./backup.sh`.
 
-Produces a clean, transaction-consistent snapshot saved locally to `./backups/bunker_YYYYMMDD_HHMMSS.db`.
+Produces a clean, transaction-consistent snapshot saved to `./backups/bunker_YYYYMMDD_HHMMSS.db`.
 
 ---
 
-## 8. Troubleshooting Guide
+## 7. Troubleshooting Guide
 
 | Component | Symptom / Issue | Possible Cause | Resolution |
 |---|---|---|---|
