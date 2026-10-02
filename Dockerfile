@@ -45,7 +45,7 @@ COPY --from=builder /workspace/packages/app/package*.json ./
 COPY --from=builder /workspace/packages/app/dist ./dist
 
 # Copy built UI SPA static assets to /app/public
-COPY --from=builder /workspace/packages/worker/public ./public
+COPY --from=builder /workspace/packages/app/public ./public
 
 # Copy deployment and installer scripts
 COPY --from=builder /workspace/scripts ./scripts
