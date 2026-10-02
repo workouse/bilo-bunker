@@ -37,3 +37,13 @@ export function getDisplayHost(): string {
     return dashboardUrl;
   }
 }
+
+/**
+ * Absolute URL for an API path. This is also the exact URL signed into the
+ * NIP-98 `u` tag, so it must match what the backend reconstructs.
+ */
+export function buildApiUrl(pathOrUrl: string): string {
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  const { apiUrl } = getDomainConfig();
+  return `${apiUrl}${pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`}`;
+}

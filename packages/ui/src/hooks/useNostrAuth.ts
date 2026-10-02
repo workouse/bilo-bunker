@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { nip19, SimplePool, EventTemplate, VerifiedEvent } from 'nostr-tools';
-import { getDomainConfig } from '../config/domains';
+import { buildApiUrl } from '../config/domains';
 
 declare global {
   interface Window {
@@ -133,10 +133,7 @@ export function useNostrAuth() {
         throw new Error('User not logged in with NIP-07 extension');
       }
 
-      const { apiUrl } = getDomainConfig();
-      const targetUrl = path.startsWith('http')
-        ? path
-        : `${apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl}${path.startsWith('/') ? path : '/' + path}`;
+      const targetUrl = buildApiUrl(path);
 
       const method = (options.method || 'GET').toUpperCase();
       const now = Math.floor(Date.now() / 1000);

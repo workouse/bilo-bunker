@@ -118,6 +118,9 @@ importers:
       vite:
         specifier: ^5.1.6
         version: 5.4.21(@types/node@26.1.2)
+      vitest:
+        specifier: ^1.6.1
+        version: 1.6.1(@types/node@26.1.2)
 
 packages:
 
