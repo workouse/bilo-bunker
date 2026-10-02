@@ -36,6 +36,7 @@ describe('NIP-98 Authentication & Authorization Middleware', () => {
     delete process.env['NSEC'];
     delete process.env['OWNER_NPUB'];
     delete process.env['OWNER_PUBKEY'];
+    delete process.env['PUBLIC_URL'];
   });
 
   afterEach(() => {
@@ -111,5 +112,77 @@ describe('NIP-98 Authentication & Authorization Middleware', () => {
     const strangerData = (await strangerRes.json()) as { error: string; message: string };
     expect(strangerData.error).toBe('Forbidden');
     expect(strangerData.message).toContain('Single-user mode');
+  });
+
+  describe('behind a TLS-terminating reverse proxy', () => {
+    const publicUrl = 'https://bunker.example.com/api/v1/bunker/uri';
+    const internalUrl = 'http://bunker.example.com/api/v1/bunker/uri';
+
+    it('accepts an https-signed request forwarded over http with X-Forwarded-Proto', async () => {
+      const bunker = new BunkerService(db);
+      const app = createApp(bunker, new RelayManager(bunker, db));
+
+      const res = await app.request(internalUrl, {
+        headers: {
+          Authorization: createNip98AuthHeader(generateSecretKey(), publicUrl, 'GET'),
+          'X-Forwarded-Proto': 'https',
+        },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it('uses the first value of a comma-separated X-Forwarded-Proto chain', async () => {
+      const bunker = new BunkerService(db);
+      const app = createApp(bunker, new RelayManager(bunker, db));
+
+      const res = await app.request(internalUrl, {
+        headers: {
+          Authorization: createNip98AuthHeader(generateSecretKey(), publicUrl, 'GET'),
+          'X-Forwarded-Proto': 'https, http',
+        },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it('still rejects an https-signed request without forwarding headers', async () => {
+      const bunker = new BunkerService(db);
+      const app = createApp(bunker, new RelayManager(bunker, db));
+
+      const res = await app.request(internalUrl, {
+        headers: { Authorization: createNip98AuthHeader(generateSecretKey(), publicUrl, 'GET') },
+      });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { message: string };
+      expect(body.message).toContain('NIP-98 URL mismatch');
+    });
+
+    it('does not let X-Forwarded-Host replay a token signed for another host', async () => {
+      const bunker = new BunkerService(db);
+      const app = createApp(bunker, new RelayManager(bunker, db));
+
+      const res = await app.request(internalUrl, {
+        headers: {
+          Authorization: createNip98AuthHeader(
+            generateSecretKey(),
+            'https://other-service.example.org/api/v1/bunker/uri',
+            'GET'
+          ),
+          'X-Forwarded-Proto': 'https',
+          'X-Forwarded-Host': 'other-service.example.org',
+        },
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it('uses PUBLIC_URL as the origin when set', async () => {
+      process.env['PUBLIC_URL'] = 'https://bunker.example.com';
+      const bunker = new BunkerService(db);
+      const app = createApp(bunker, new RelayManager(bunker, db));
+
+      const res = await app.request('http://app:3000/api/v1/bunker/uri', {
+        headers: { Authorization: createNip98AuthHeader(generateSecretKey(), publicUrl, 'GET') },
+      });
+      expect(res.status).toBe(200);
+    });
   });
 });

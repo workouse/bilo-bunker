@@ -154,6 +154,7 @@ Produces a clean, transaction-consistent snapshot saved to `./backups/bunker_YYY
 |---|---|---|---|
 | **App** | Healthcheck failing (`502 Bad Gateway` or `Connection Refused`) | `OWNER_PUBKEY` variable missing or invalid hex length | Check container logs: `docker compose logs app`. Ensure `.env` contains valid 64-char hex public key for `OWNER_PUBKEY`. |
 | **Caddy / TLS** | HTTPS certificate errors or TLS challenge timeout | Port 80/443 blocked or DNS A-record not pointing to server IP | Ensure DNS A-record resolves to server IP and inbound ports 80/443 TCP/UDP are open in firewall. Check Caddy logs: `docker compose logs caddy`. |
+| **Dashboard** | Logged in, but keypair stays on "Generating...", no QR code, new connections don't appear (API returns `401 NIP-98 URL mismatch`) | A custom reverse proxy (e.g. Nginx Proxy Manager) terminates TLS but the app sees `http://` or a different host | Make the proxy forward the `Host` header and set `X-Forwarded-Proto`, or set `PUBLIC_URL=https://your.domain` in the app environment. |
 | **Relay** | NIP-46 signing requests timed out | Outbound WebSocket connection failure or unreachable relay | View logs: `docker compose logs app \| grep "\[relay\]"`. Verify relay URLs start with `wss://`. |
 | **DB** | SQLite locks or permission error | File permission error on `/data` volume | Ensure container user (`bunker`) has write ownership of `/data` directory volume. |
 
