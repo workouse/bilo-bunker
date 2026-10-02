@@ -11,15 +11,15 @@ export const QuickstartSection: React.FC = () => {
     },
     {
       label: 'Configure Environment & Interactive Setup',
-      code: 'cp .env.dist .env && make setup',
+      code: 'make blackstart',
     },
     {
       label: 'Spin Up Docker Stack with Caddy Auto-SSL',
       code: 'docker compose up -d',
     },
     {
-      label: 'Automated 1-Command Production Server Deploy',
-      code: 'make deploy-remote SERVER=user@host DOMAIN=bunker.example.com EMAIL=admin@example.com',
+      label: 'Or: 1-Command Production Server Install (run on your VPS)',
+      code: 'curl -fsSL https://raw.githubusercontent.com/workouse/bilo-bunker/master/scripts/install.sh | bash',
     },
   ];
 

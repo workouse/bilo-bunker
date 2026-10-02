@@ -52,7 +52,7 @@ curl -fsSL https://bunker.workouse.com/install.sh | bash
 
 Or via GitHub:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/workouse/bilo-bunker/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/workouse/bilo-bunker/master/scripts/install.sh | bash
 ```
 
 ### Option B: Manual Docker Compose Stack

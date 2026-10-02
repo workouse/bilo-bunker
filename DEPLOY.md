@@ -34,7 +34,7 @@ curl -fsSL https://bunker.workouse.com/install.sh | bash
 
 Or via GitHub fallback:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/workouse/bilo-bunker/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/workouse/bilo-bunker/master/scripts/install.sh | bash
 ```
 
 Or run locally via Makefile:
