@@ -14,7 +14,6 @@ build/
 packages/*/dist/
 packages/*/dist
 packages/app/public/
-.wrangler/
 .cache/
 .turbo/
 .vite/

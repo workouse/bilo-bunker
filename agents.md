@@ -27,7 +27,7 @@ This document defines the agentic governance model, domain scopes, file ownershi
 |                       |                                                                           |
 |                       v                                                                           |
 |   +-------------------+-----------------------------------------------------------------------+   |
-|   | Express / Hono App Container (Node.js 22 + SQLite)                                        |   |
+|   | Hono App Container (Node.js 22 + SQLite)                                                  |   |
 |   | - Serves React SPA (TailAdmin Management Dashboard)                                       |   |
 |   | - Handles NIP-98 HTTP Auth Headers & REST API Endpoints                                   |   |
 |   | - Persistent WebSocket pool for relay connections & NIP-46 RPC processing                 |   |
@@ -42,8 +42,8 @@ This document defines the agentic governance model, domain scopes, file ownershi
 
 | Agent Alias | Domain Title | Focus Area | Key Files & Directory Ownership |
 | :--- | :--- | :--- | :--- |
-| **`@agent-arch`** | Architecture Spec | Express/Hono router, SQLite schemas, Bunker service | `packages/app/src/app.ts`, `packages/app/src/db/`, `packages/app/src/services/` |
-| **`@agent-nostr`** | Nostr Protocol Specialist | NIP-46, NIP-07, NIP-44, NIP-98, NIP-01, relay WS pool | `packages/app/src/services/bunker.ts`, `packages/app/src/middleware/auth.ts` |
+| **`@agent-arch`** | Architecture Spec | Hono router, SQLite schemas, Bunker service | `packages/app/src/app.ts`, `packages/app/src/db/`, `packages/app/src/services/` |
+| **`@agent-nostr`** | Nostr Protocol Specialist | NIP-46, NIP-07, NIP-44, NIP-98, NIP-01, relay WS pool | `packages/app/src/services/bunker.ts`, `packages/app/src/middleware/nip98.ts` |
 | **`@agent-ui`** | Frontend & TailAdmin Specialist | React SPA, TailAdmin UI components, NIP-07 state, Vite | `packages/ui/` |
 | **`@agent-devops`** | OS & Container Pipeline | Docker, Docker Compose, Caddy, `Makefile`, GitHub Actions | `Dockerfile`, `docker-compose.yml`, `Caddyfile`, `Makefile`, `.github/` |
 
@@ -72,7 +72,7 @@ This document defines the agentic governance model, domain scopes, file ownershi
 - **Primary Goal:** Implement cryptographic precision, NIP spec compliance, secure NIP-46 remote signing, NIP-44 v2 encryption/decryption, and resilient relay pool management.
 - **Owned Scope:**
   - `packages/app/src/services/bunker.ts`
-  - `packages/app/src/middleware/auth.ts`
+  - `packages/app/src/middleware/nip98.ts`
   - Nostr event verification and signature operations
 - **Supported NIPs:**
   - **NIP-01:** Basic Nostr protocol specifications, event structure, and validation.

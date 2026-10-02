@@ -9,7 +9,7 @@ This guide details the prerequisites, initial setup, deployment procedures, alte
 ### Workstation Requirements
 - **Docker** & **Docker Compose** (v2.0+)
 - **Node.js** ≥ 22 (managed via `nvm`)
-- **Tools**: `git`, `bash`, `rsync`, `ssh`
+- **Tools**: `git`, `bash`, `ssh`
 
 ### Server Requirements
 - **Operating System**: Linux VPS (Ubuntu/Debian, RHEL/OL, Fedora, Alpine)
@@ -81,7 +81,7 @@ The setup script (`scripts/blackstart.sh`) will prompt you for:
 
 ## 4. Alternative Deployment: Fly.io
 
-For a managed cloud container deployment without VPS infrastructure, `packages/app` can be deployed directly to [Fly.io](https://fly.io).
+For a managed cloud container deployment without VPS infrastructure, the root `Dockerfile` (UI + API in one image, port `3000`) can be deployed to [Fly.io](https://fly.io). Fly terminates TLS itself, so Caddy is not needed.
 
 ### Step-by-Step Fly.io Deployment
 
@@ -89,23 +89,24 @@ For a managed cloud container deployment without VPS infrastructure, `packages/a
    ```bash
    fly auth login
    ```
-2. **Navigate to the application package**:
-   ```bash
-   cd packages/app
-   ```
-3. **Initialize the Fly app**:
+2. **Initialize the Fly app from the repository root** (it detects the root `Dockerfile`; set the internal port to `3000`):
    ```bash
    fly launch --no-deploy
    ```
-4. **Create a persistent volume** for SQLite storage:
+3. **Create a persistent volume** for SQLite storage and mount it at `/data` in `fly.toml`:
    ```bash
    fly volumes create bunker_data --size 1 --region iad
    ```
-5. **Configure environment secrets**:
-   ```bash
-   fly secrets set OWNER_PUBKEY=your_64_char_hex_pubkey DEFAULT_RELAYS=wss://relay.damus.io,wss://nos.lol
+   ```toml
+   [mounts]
+     source = "bunker_data"
+     destination = "/data"
    ```
-6. **Deploy**:
+4. **Configure environment** (see the README for single- vs multi-user mode):
+   ```bash
+   fly secrets set OWNER_PUBKEY=npub1... DEFAULT_RELAYS=wss://relay.damus.io,wss://nos.lol
+   ```
+5. **Deploy**:
    ```bash
    fly deploy
    ```
