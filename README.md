@@ -101,6 +101,7 @@ docker run -d \
 | `DB_PATH` | Path to SQLite database file inside container | No | `/data/bunker.db` |
 | `LOG_LEVEL` | Application logging verbosity (`error`, `warn`, `info`, `debug`) | No | `info` |
 | `PUBLIC_URL` | Public origin the dashboard is served from (e.g. `https://bunker.example.com`). Only needed if your reverse proxy does not forward the `Host` and `X-Forwarded-Proto` headers | No | `""` |
+| `INSTALL_SCRIPT_PATH` | Override the file served at `/install.sh`. By default `scripts/install.sh` is located relative to the app | No | `""` |
 
 ### 👤 Single-User vs Multi-User Mode
 

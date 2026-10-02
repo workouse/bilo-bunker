@@ -1,10 +1,42 @@
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serveStatic } from '@hono/node-server/serve-static';
 import type { BunkerService } from './services/bunker.js';
 import type { RelayManager } from './services/relay.js';
 import { createApiRouter } from './routes/api.js';
+import { logger } from './utils/logger.js';
+
+/**
+ * Locate scripts/install.sh relative to this module rather than the CWD.
+ *
+ * - Docker image: /app/dist/app.js → /app/scripts/install.sh
+ * - Repository (tsx src/ or compiled dist/): packages/app/{src,dist}/app.* → <repo>/scripts/install.sh
+ *
+ * INSTALL_SCRIPT_PATH overrides both.
+ */
+export function resolveInstallerScriptPath(): string | null {
+  const override = process.env['INSTALL_SCRIPT_PATH'];
+  if (override) return fs.existsSync(override) ? override : null;
+
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.resolve(here, '../scripts/install.sh'),
+    path.resolve(here, '../../../scripts/install.sh'),
+  ];
+  return candidates.find((p) => fs.existsSync(p)) ?? null;
+}
+
+function loadInstallerScript(): string | null {
+  const scriptPath = resolveInstallerScriptPath();
+  if (!scriptPath) {
+    logger.warn('[app] scripts/install.sh not found; /install.sh will return 404');
+    return null;
+  }
+  return fs.readFileSync(scriptPath, 'utf-8');
+}
 
 /**
  * Pure Hono app factory.
@@ -42,23 +74,15 @@ export function createApp(bunkerService: BunkerService, relayManager: RelayManag
   );
 
   // ── Public Installer Script Serving ────────────────────────────────────────
+  const installerScript = loadInstallerScript();
   const serveInstallerScript = (c: import('hono').Context) => {
-    const candidatePaths = [
-      './scripts/install.sh',
-      '../../scripts/install.sh',
-      '../scripts/install.sh',
-      './public/install.sh',
-    ];
-    for (const p of candidatePaths) {
-      if (fs.existsSync(p)) {
-        const content = fs.readFileSync(p, 'utf-8');
-        return c.text(content, 200, {
-          'Content-Type': 'text/x-shellscript; charset=utf-8',
-          'Cache-Control': 'public, max-age=300',
-        });
-      }
+    if (installerScript === null) {
+      return c.text('#!/usr/bin/env bash\necho "Error: Installer script not found." >&2\nexit 1\n', 404);
     }
-    return c.text('#!/usr/bin/env bash\necho "Error: Installer script not found." >&2\nexit 1\n', 404);
+    return c.text(installerScript, 200, {
+      'Content-Type': 'text/x-shellscript; charset=utf-8',
+      'Cache-Control': 'public, max-age=300',
+    });
   };
 
   app.get('/install.sh', serveInstallerScript);

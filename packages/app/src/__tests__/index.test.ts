@@ -3,7 +3,10 @@ import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrations.js';
 import { BunkerService } from '../services/bunker.js';
 import { RelayManager } from '../services/relay.js';
-import { createApp } from '../app.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { createApp, resolveInstallerScriptPath } from '../app.js';
 
 // Use an in-memory SQLite database so tests have no filesystem side-effects.
 const db = new Database(':memory:');
@@ -48,3 +51,45 @@ describe('Bilo Bunker Health Check', () => {
   });
 });
 
+
+describe('Installer script resolution', () => {
+  const original = process.env['INSTALL_SCRIPT_PATH'];
+  const restore = () => {
+    if (original === undefined) delete process.env['INSTALL_SCRIPT_PATH'];
+    else process.env['INSTALL_SCRIPT_PATH'] = original;
+  };
+
+  it('finds scripts/install.sh relative to the module without an override', () => {
+    delete process.env['INSTALL_SCRIPT_PATH'];
+    try {
+      expect(resolveInstallerScriptPath()).toMatch(/scripts[\\/]install\.sh$/);
+    } finally {
+      restore();
+    }
+  });
+
+  it('serves the file named by INSTALL_SCRIPT_PATH', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bilo-install-'));
+    const file = path.join(dir, 'custom.sh');
+    fs.writeFileSync(file, '#!/usr/bin/env bash\necho custom\n');
+    process.env['INSTALL_SCRIPT_PATH'] = file;
+    try {
+      const res = await createApp(bunker, relay).request('/install.sh');
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain('echo custom');
+    } finally {
+      restore();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('returns 404 when INSTALL_SCRIPT_PATH does not exist', async () => {
+    process.env['INSTALL_SCRIPT_PATH'] = '/nonexistent/install.sh';
+    try {
+      const res = await createApp(bunker, relay).request('/install.sh');
+      expect(res.status).toBe(404);
+    } finally {
+      restore();
+    }
+  });
+});
