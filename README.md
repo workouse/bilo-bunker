@@ -84,6 +84,8 @@ docker run -d \
   ghcr.io/workouse/bilo-bunker:latest
 ```
 
+> **Using your own reverse proxy (Nginx Proxy Manager, Traefik, nginx, ...)?** Make sure it forwards the original `Host` header and sets `X-Forwarded-Proto` (most do by default). Dashboard requests are authenticated with NIP-98, which signs the exact public URL, so the app has to know it was reached over `https://`. If your proxy can't forward these headers, set `PUBLIC_URL=https://bunker.example.com` instead.
+
 ---
 
 ## ⚙️ Environment Variables Reference
@@ -97,6 +99,7 @@ docker run -d \
 | `PORT` | Node.js application server internal port | No | `3000` |
 | `DB_PATH` | Path to SQLite database file inside container | No | `/data/bunker.db` |
 | `LOG_LEVEL` | Application logging verbosity (`error`, `warn`, `info`, `debug`) | No | `info` |
+| `PUBLIC_URL` | Public origin the dashboard is served from (e.g. `https://bunker.example.com`). Only needed if your reverse proxy does not forward the `Host` and `X-Forwarded-Proto` headers | No | `""` |
 
 ---
 
