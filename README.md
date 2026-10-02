@@ -94,12 +94,27 @@ docker run -d \
 |---|---|---|---|
 | `DOMAIN` | Primary domain name (e.g. `bunker.example.com` or `localhost`) | Yes | `localhost` |
 | `CERTBOT_EMAIL` | Email address for Let's Encrypt / ZeroSSL TLS notifications (used by Caddy in Docker Compose) | Optional (for Docker Compose) | `""` |
-| `OWNER_PUBKEY` | 64-character lowercase hex Nostr public key of the bunker owner | Yes | `""` |
+| `OWNER_NSEC` | Owner Nostr secret key (`nsec1...` or 64-char hex). Enables **single-user mode** (see below). Aliases: `OWNER_SECRET_KEY`, `NSEC` | No | `""` |
+| `OWNER_PUBKEY` | Admin Nostr public key (`npub1...` or 64-char hex) for **multi-user mode**. Alias: `OWNER_NPUB`. Ignored when `OWNER_NSEC` is set | No | `""` |
 | `DEFAULT_RELAYS` | Comma-separated WebSocket Nostr relays to connect to | No | `wss://relay.damus.io,...` |
 | `PORT` | Node.js application server internal port | No | `3000` |
 | `DB_PATH` | Path to SQLite database file inside container | No | `/data/bunker.db` |
 | `LOG_LEVEL` | Application logging verbosity (`error`, `warn`, `info`, `debug`) | No | `info` |
 | `PUBLIC_URL` | Public origin the dashboard is served from (e.g. `https://bunker.example.com`). Only needed if your reverse proxy does not forward the `Host` and `X-Forwarded-Proto` headers | No | `""` |
+
+### 👤 Single-User vs Multi-User Mode
+
+The mode is chosen at startup from the owner variables:
+
+| Set in `.env` | Mode | Behaviour |
+|---|---|---|
+| `OWNER_NSEC` | **Single-user** | The bunker signs with *your* key. Only that key can log in to the dashboard (everyone else gets `403`). On every boot the stored bunker key is replaced with this one. |
+| `OWNER_PUBKEY` / `OWNER_NPUB` only | **Multi-user** | Any NIP-07 user can log in and create their own bunker connections. The owner pubkey is reported on `/api/v1/health` and used for profile lookups; it does not currently restrict access. |
+| Neither | **Multi-user** | Same as above, without an owner. A bunker keypair is generated on first boot and persisted in SQLite. |
+
+If both are set, `OWNER_NSEC` wins. Both variables accept bech32 (`nsec1…` / `npub1…`) or 64-char hex.
+
+> ⚠️ `OWNER_NSEC` puts your private key in an environment variable. Keep `.env` out of version control (it is git-ignored), restrict its file permissions (`chmod 600 .env`), and prefer multi-user mode if you don't need the bunker to sign as your main identity.
 
 ---
 
