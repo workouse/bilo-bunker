@@ -28,6 +28,26 @@ Please maintain a respectful, welcoming, and inclusive community environment in 
    ```bash
    make dev
    ```
+   The backend listens on `PORT` (default `3000`); the Vite dev server runs on
+   <http://localhost:5173> and proxies `/api` to the backend.
+
+---
+
+## 🔍 Debugging Tools
+
+`packages/app/scripts/` contains small CLI helpers (run with `--help` for all options).
+Pubkeys accept 64-char hex or `npub1…`; relays default to `DEFAULT_RELAYS`.
+
+```bash
+# Send a NIP-46 `connect` from an ephemeral client and print the response
+pnpm --filter @bilo-bunker/app debug:nip46 -- --uri 'bunker://<pubkey>?relay=wss://...&secret=...'
+
+# Make a NIP-98 authenticated API request (ephemeral key, or --nsec) and print the curl equivalent
+pnpm --filter @bilo-bunker/app debug:nip98 -- --url http://localhost:3000/api/v1/bunker/logs
+
+# Watch relays for NIP-46 traffic to a bunker and/or from a client
+pnpm --filter @bilo-bunker/app debug:sniff -- --bunker <pubkey> [--client <pubkey>]
+```
 
 ---
 

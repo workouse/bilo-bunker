@@ -9,7 +9,10 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "debug:nip46": "node scripts/nip46-connect.mjs",
+    "debug:nip98": "node scripts/nip98-request.mjs",
+    "debug:sniff": "node scripts/sniff-relays.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^1.12.0",
