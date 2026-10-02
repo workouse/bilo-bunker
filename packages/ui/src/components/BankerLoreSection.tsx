@@ -1,5 +1,6 @@
 import React from 'react';
 import { Film, ShieldAlert, KeyRound, Award, Sparkles } from 'lucide-react';
+import { getDisplayHost } from '../config/domains';
 
 export const BankerLoreSection: React.FC = () => {
   return (
@@ -66,7 +67,7 @@ export const BankerLoreSection: React.FC = () => {
                   <Award className="w-3.5 h-3.5" />
                   <span>100% Self-Sovereign</span>
                 </span>
-                <span>bunker-bilo.workouse.com</span>
+                <span>{getDisplayHost()}</span>
               </div>
             </div>
           </div>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { ShieldCheck, Zap, Github, ArrowRight, Lock, Server } from 'lucide-react';
-import { getDomainConfig } from '../config/domains';
+import { getDomainConfig, getDisplayHost } from '../config/domains';
 
 interface LandingHeroProps {
   onLaunchDashboard: () => void;
@@ -20,7 +20,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({ onLaunchDashboard }) =
         <div className="inline-flex flex-wrap items-center justify-center gap-2 mb-8">
           <span className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-primary/10 text-primary border border-primary/30 font-mono">
             <Server className="w-3.5 h-3.5" />
-            <span>app.bunker-bilo.workouse.com</span>
+            <span>{getDisplayHost()}</span>
           </span>
           <span className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-accent-purple/10 text-accent-purple border border-accent-purple/30">
             <Lock className="w-3.5 h-3.5" />

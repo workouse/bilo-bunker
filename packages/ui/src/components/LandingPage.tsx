@@ -1,5 +1,6 @@
 import React from 'react';
 import { ShieldCheck, Github, LayoutDashboard, Globe } from 'lucide-react';
+import { getDisplayHost } from '../config/domains';
 import { LandingHero } from './LandingHero';
 import { DashboardPreviewSection } from './DashboardPreviewSection';
 import { BankerLoreSection } from './BankerLoreSection';
@@ -27,7 +28,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLaunchDashboard }) =
               <span className="font-bold text-white tracking-tight text-lg">Bilo Bunker</span>
               <span className="hidden sm:inline-flex items-center space-x-1 text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-dark-muted border border-dark-border">
                 <Globe className="w-3 h-3 text-primary" />
-                <span>bunker-bilo.workouse.com</span>
+                <span>{getDisplayHost()}</span>
               </span>
             </div>
           </div>

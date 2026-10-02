@@ -1,55 +1,39 @@
 /**
  * Domain Configuration for Bilo Bunker
- * Handles domain resolution for default Workouse deployment and self-hosted instances.
+ *
+ * The Docker image (and the Caddy stack) serves the dashboard and the API from
+ * the same origin, so everything defaults to `window.location.origin`.
+ * Deployments that split them across hosts can override at build time with
+ * VITE_API_URL / VITE_DASHBOARD_URL / VITE_LANDING_URL.
  */
 
 export interface DomainConfig {
   landingUrl: string;
   dashboardUrl: string;
   apiUrl: string;
-  isSelfHosted: boolean;
 }
 
+const stripTrailingSlash = (url: string): string => url.replace(/\/+$/, '');
+
 export function getDomainConfig(): DomainConfig {
-  const envApiUrl = import.meta.env.VITE_API_URL;
-  const envDashboardUrl = import.meta.env.VITE_DASHBOARD_URL;
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
-  const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
-
-  // Standard Workouse domains
-  const DEFAULT_LANDING = 'https://bunker-bilo.workouse.com';
-  const DEFAULT_DASHBOARD = 'https://app.bunker-bilo.workouse.com';
-  const DEFAULT_API = 'https://api.bunker-bilo.workouse.com';
-
-  const isWorkouseDomain = currentHost.endsWith('workouse.com');
-  const isLocalhost = currentHost === 'localhost' || currentHost === '127.0.0.1';
-  const isSelfHosted = !isWorkouseDomain && !isLocalhost;
-
-  // Compute API URL
-  let apiUrl = DEFAULT_API;
-  if (envApiUrl) {
-    apiUrl = envApiUrl;
-  } else if (isLocalhost) {
-    apiUrl = 'http://localhost:3007';
-  } else if (isSelfHosted) {
-    // Self-hosted fallback: use current origin if relative or api.subdomain
-    apiUrl = currentHost.startsWith('app.')
-      ? `${window.location.protocol}//api.${currentHost.replace(/^app\./, '')}`
-      : `${window.location.protocol}//${window.location.host}`;
-  }
-
-  // Compute Dashboard URL
-  let dashboardUrl = DEFAULT_DASHBOARD;
-  if (envDashboardUrl) {
-    dashboardUrl = envDashboardUrl;
-  } else if (isSelfHosted) {
-    dashboardUrl = `${window.location.protocol}//${window.location.host}`;
-  }
+  const resolve = (override: string | undefined): string =>
+    stripTrailingSlash(override?.trim() || origin);
 
   return {
-    landingUrl: DEFAULT_LANDING,
-    dashboardUrl,
-    apiUrl,
-    isSelfHosted,
+    landingUrl: resolve(import.meta.env.VITE_LANDING_URL),
+    dashboardUrl: resolve(import.meta.env.VITE_DASHBOARD_URL),
+    apiUrl: resolve(import.meta.env.VITE_API_URL),
   };
+}
+
+/** Host (no scheme) of the dashboard, for display in badges, e.g. `bunker.example.com`. */
+export function getDisplayHost(): string {
+  const { dashboardUrl } = getDomainConfig();
+  try {
+    return new URL(dashboardUrl).host;
+  } catch {
+    return dashboardUrl;
+  }
 }

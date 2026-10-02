@@ -130,7 +130,7 @@ export const QuickstartSection: React.FC = () => {
             <div>
               <h3 className="text-base font-bold text-white">Self-Hosted Domain Architecture</h3>
               <p className="text-xs text-dark-muted">
-                Self-hosted deployments only require your Admin Dashboard and API endpoints. The marketing landing page is optional.
+                A single domain serves the dashboard and the API. Split them across hosts only if you need to, using the VITE_* build overrides.
               </p>
             </div>
           </div>
@@ -139,9 +139,9 @@ export const QuickstartSection: React.FC = () => {
             <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-1.5">
               <div className="text-emerald-400 font-bold flex items-center space-x-1">
                 <Wrench className="w-3.5 h-3.5" />
-                <span>Admin Dashboard Domain</span>
+                <span>Admin Dashboard</span>
               </div>
-              <div className="text-slate-300">app.yourdomain.com</div>
+              <div className="text-slate-300">https://bunker.yourdomain.com/</div>
               <div className="text-dark-muted text-[11px] font-sans">
                 Serves the NIP-07 management interface for authorized users.
               </div>
@@ -152,7 +152,7 @@ export const QuickstartSection: React.FC = () => {
                 <Wrench className="w-3.5 h-3.5" />
                 <span>Backend API &amp; NIP-46 Gateway</span>
               </div>
-              <div className="text-slate-300">api.yourdomain.com</div>
+              <div className="text-slate-300">https://bunker.yourdomain.com/api/v1</div>
               <div className="text-dark-muted text-[11px] font-sans">
                 Handles NIP-98 authentication, WebSocket relay connections, and NIP-46 signing requests.
               </div>
