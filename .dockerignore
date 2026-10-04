@@ -7,3 +7,5 @@ dist
 .git
 *.log
 .DS_Store
+packages/app/public
+packages/worker

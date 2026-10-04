@@ -52,7 +52,7 @@ curl -fsSL https://bunker.workouse.com/install.sh | bash
 
 Or via GitHub:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/workouse/bilo-bunker/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/workouse/bilo-bunker/master/scripts/install.sh | bash
 ```
 
 ### Option B: Manual Docker Compose Stack
@@ -80,11 +80,30 @@ docker run -d \
   -p 3000:3000 \
   -v bilo_data:/data \
   -e DOMAIN=bunker.example.com \
-  -e OWNER_PUBKEY=your_64_char_hex_pubkey \
+  -e OWNER_PUBKEY=npub1yourpublickey \
   ghcr.io/workouse/bilo-bunker:latest
 ```
 
 > **Using your own reverse proxy (Nginx Proxy Manager, Traefik, nginx, ...)?** Make sure it forwards the original `Host` header and sets `X-Forwarded-Proto` (most do by default). Dashboard requests are authenticated with NIP-98, which signs the exact public URL, so the app has to know it was reached over `https://`. If your proxy can't forward these headers, set `PUBLIC_URL=https://bunker.example.com` instead.
+
+---
+
+## 👥 Operating Modes
+
+Bilo Bunker runs in one of two modes, chosen at startup from the environment:
+
+| | Multi-user mode (default) | Single-user mode |
+|---|---|---|
+| **Enabled by** | No secret key set. `OWNER_PUBKEY` / `OWNER_NPUB` is optional | `OWNER_NSEC` set (aliases `OWNER_SECRET_KEY`, `NSEC`) |
+| **Signing key** | A bunker key generated on first start and stored in SQLite | Your own key: the bunker signs as you |
+| **Who can log in** | Anyone with a NIP-07 extension; each user's connections are isolated | Only the owner; other pubkeys get `403 Forbidden` |
+| **Key formats** | `npub1…` or 64-char hex | `nsec1…` or 64-char hex |
+
+If both are set, **`OWNER_NSEC` wins** and the instance runs in single-user mode. For the public key, `OWNER_NPUB` is read before `OWNER_PUBKEY`. The startup log shows which mode is active (`[bunker] Operating in … MODE`).
+
+> **⚠️ Security:** in single-user mode your nsec lives in an environment variable, so anyone with access to the host, the `.env` file or `docker inspect` can read it. Keep `.env` private (`chmod 600 .env`) and use multi-user mode if you don't need the bunker to sign with your own key.
+>
+> **⚠️ Switching to single-user mode replaces the stored bunker key.** The previously generated key is deleted from the database, so existing `bunker://` URIs stop working. Run `make backup` first if you may want to switch back.
 
 ---
 
@@ -94,11 +113,13 @@ docker run -d \
 |---|---|---|---|
 | `DOMAIN` | Primary domain name (e.g. `bunker.example.com` or `localhost`) | Yes | `localhost` |
 | `CERTBOT_EMAIL` | Email address for Let's Encrypt / ZeroSSL TLS notifications (used by Caddy in Docker Compose) | Optional (for Docker Compose) | `""` |
-| `OWNER_PUBKEY` | 64-character lowercase hex Nostr public key of the bunker owner | Yes | `""` |
+| `OWNER_PUBKEY` | Multi-user mode: Nostr public key of the instance admin (`npub1…` or 64-char hex). Alias: `OWNER_NPUB` (takes precedence) | No | `""` |
+| `OWNER_NSEC` | Enables **single-user mode**: the owner's Nostr secret key (`nsec1…` or 64-char hex). Aliases: `OWNER_SECRET_KEY`, `NSEC`. See [Operating modes](#-operating-modes) | No | `""` |
 | `DEFAULT_RELAYS` | Comma-separated WebSocket Nostr relays to connect to | No | `wss://relay.damus.io,...` |
 | `PORT` | Node.js application server internal port | No | `3000` |
 | `DB_PATH` | Path to SQLite database file inside container | No | `/data/bunker.db` |
-| `LOG_LEVEL` | Application logging verbosity (`error`, `warn`, `info`, `debug`) | No | `info` |
+| `LOG_LEVEL` | Application logging verbosity (`error`, `warn`, `info`, `debug`). Per-request NIP-46 logs only appear at `debug` | No | `info` |
+| `INSTALL_SCRIPT_PATH` | Advanced: path of the installer served at `/install.sh`. Set in the Docker image; defaults to the repo's `scripts/install.sh` otherwise | No | `/app/scripts/install.sh` (Docker) |
 | `PUBLIC_URL` | Public origin the dashboard is served from (e.g. `https://bunker.example.com`). Only needed if your reverse proxy does not forward the `Host` and `X-Forwarded-Proto` headers | No | `""` |
 
 ---
@@ -181,6 +202,7 @@ bilo-bunker/
 
 ## 🤝 Community & Governance
 
+- [Roadmap](ROADMAP.md)
 - [Contributing Guidelines](CONTRIBUTING.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Security Policy](SECURITY.md)

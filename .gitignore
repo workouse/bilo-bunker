@@ -13,7 +13,6 @@ dist/
 build/
 packages/*/dist/
 packages/*/dist
-packages/worker/public/
 packages/app/public/
 .wrangler/
 .cache/

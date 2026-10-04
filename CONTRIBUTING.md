@@ -28,6 +28,26 @@ Please maintain a respectful, welcoming, and inclusive community environment in 
    ```bash
    make dev
    ```
+   This starts the backend API on `http://localhost:3000` and the Vite UI on `http://localhost:5173` (open this one). Vite proxies `/api` to the backend; point it elsewhere with `VITE_DEV_API_TARGET`.
+
+---
+
+## 🔍 Debugging Tools
+
+`packages/app/scripts/` has three small CLI tools (run with `--help` for all options):
+
+```bash
+# End-to-end NIP-46 check: send `connect` to a bunker via its relays and wait for the reply
+pnpm --filter @bilo-bunker/app debug:nip46 --bunker 'bunker://<pubkey>?relay=wss://relay.damus.io'
+
+# Call the API with a NIP-98 auth header (throwaway key, or --nsec to act as a user) and print a curl command
+pnpm --filter @bilo-bunker/app debug:nip98 --url http://localhost:3000/api/v1/bunker/uri
+
+# Watch relays for events addressed to (--p) or signed by (--author) a pubkey
+pnpm --filter @bilo-bunker/app debug:sniff --p <bunker-pubkey> --relay wss://relay.damus.io
+```
+
+`debug:nip46` registers its throwaway client on the bunker; revoke it from the dashboard afterwards if needed.
 
 ---
 

@@ -1,10 +1,36 @@
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serveStatic } from '@hono/node-server/serve-static';
 import type { BunkerService } from './services/bunker.js';
 import type { RelayManager } from './services/relay.js';
 import { createApiRouter } from './routes/api.js';
+import { createLogger } from './utils/logger.js';
+
+const log = createLogger('app');
+
+/**
+ * Path of the installer served at /install.sh. INSTALL_SCRIPT_PATH wins (set
+ * to /app/scripts/install.sh in the Docker image); otherwise it is resolved
+ * relative to this module, which sits three levels below the repo root in
+ * both src/ and dist/, so it does not depend on the working directory.
+ */
+function resolveInstallScriptPath(): string {
+  const fromEnv = process.env.INSTALL_SCRIPT_PATH?.trim();
+  if (fromEnv) return fromEnv;
+  return fileURLToPath(new URL('../../../scripts/install.sh', import.meta.url));
+}
+
+function loadInstallScript(): string | null {
+  const scriptPath = resolveInstallScriptPath();
+  try {
+    return fs.readFileSync(scriptPath, 'utf-8');
+  } catch {
+    log.warn(`Installer script not found at ${scriptPath}; /install.sh will return 404`);
+    return null;
+  }
+}
 
 /**
  * Pure Hono app factory.
@@ -12,7 +38,16 @@ import { createApiRouter } from './routes/api.js';
  * Accepts the two service singletons and returns a fully-configured Hono
  * application with no top-level side-effects.
  */
-export function createApp(bunkerService: BunkerService, relayManager: RelayManager): Hono {
+export interface CreateAppOptions {
+  /** Directory with the built dashboard SPA (default ./public, relative to the cwd). */
+  publicDir?: string;
+}
+
+export function createApp(
+  bunkerService: BunkerService,
+  relayManager: RelayManager,
+  options: CreateAppOptions = {}
+): Hono {
   const app = new Hono();
 
   // ── Global middleware ──────────────────────────────────────────────────────
@@ -42,23 +77,16 @@ export function createApp(bunkerService: BunkerService, relayManager: RelayManag
   );
 
   // ── Public Installer Script Serving ────────────────────────────────────────
+  // Read once at startup; the script only changes with a new release/image.
+  const installScript = loadInstallScript();
   const serveInstallerScript = (c: import('hono').Context) => {
-    const candidatePaths = [
-      './scripts/install.sh',
-      '../../scripts/install.sh',
-      '../scripts/install.sh',
-      './public/install.sh',
-    ];
-    for (const p of candidatePaths) {
-      if (fs.existsSync(p)) {
-        const content = fs.readFileSync(p, 'utf-8');
-        return c.text(content, 200, {
-          'Content-Type': 'text/x-shellscript; charset=utf-8',
-          'Cache-Control': 'public, max-age=300',
-        });
-      }
+    if (installScript === null) {
+      return c.text('#!/usr/bin/env bash\necho "Error: Installer script not found." >&2\nexit 1\n', 404);
     }
-    return c.text('#!/usr/bin/env bash\necho "Error: Installer script not found." >&2\nexit 1\n', 404);
+    return c.text(installScript, 200, {
+      'Content-Type': 'text/x-shellscript; charset=utf-8',
+      'Cache-Control': 'public, max-age=300',
+    });
   };
 
   app.get('/install.sh', serveInstallerScript);
@@ -68,7 +96,7 @@ export function createApp(bunkerService: BunkerService, relayManager: RelayManag
   app.route('/api/v1', createApiRouter(bunkerService, relayManager));
 
   // ── Static SPA Serving (Single Container Mode) ──────────────────────────────
-  const publicDir = './public';
+  const publicDir = options.publicDir ?? './public';
   if (fs.existsSync(publicDir) && fs.existsSync(`${publicDir}/index.html`)) {
     app.use('/*', serveStatic({ root: publicDir }));
     app.get('*', (c, next) => {

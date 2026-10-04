@@ -10,16 +10,16 @@ export const QuickstartSection: React.FC = () => {
       code: 'git clone https://github.com/workouse/bilo-bunker.git && cd bilo-bunker',
     },
     {
-      label: 'Configure Environment & Interactive Setup',
-      code: 'cp .env.dist .env && make setup',
+      label: 'Interactive Setup (writes .env)',
+      code: 'make blackstart',
     },
     {
       label: 'Spin Up Docker Stack with Caddy Auto-SSL',
       code: 'docker compose up -d',
     },
     {
-      label: 'Automated 1-Command Production Server Deploy',
-      code: 'make deploy-remote SERVER=user@host DOMAIN=bunker.example.com EMAIL=admin@example.com',
+      label: 'Or: 1-Command Install on Any Linux VPS',
+      code: 'curl -fsSL https://bunker.workouse.com/install.sh | bash',
     },
   ];
 
@@ -130,31 +130,25 @@ export const QuickstartSection: React.FC = () => {
             <div>
               <h3 className="text-base font-bold text-white">Self-Hosted Domain Architecture</h3>
               <p className="text-xs text-dark-muted">
-                Self-hosted deployments only require your Admin Dashboard and API endpoints. The marketing landing page is optional.
+                The Docker image serves the dashboard and the API from the same origin.
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+          <div className="grid grid-cols-1 gap-4 text-xs font-mono">
             <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-1.5">
               <div className="text-emerald-400 font-bold flex items-center space-x-1">
                 <Wrench className="w-3.5 h-3.5" />
-                <span>Admin Dashboard Domain</span>
+                <span>Dashboard &amp; API on One Domain</span>
               </div>
-              <div className="text-slate-300">app.yourdomain.com</div>
+              <div className="text-slate-300">
+                bunker.yourdomain.com <span className="text-dark-muted">→ dashboard</span>
+                <br />
+                bunker.yourdomain.com/api <span className="text-dark-muted">→ NIP-98 API &amp; NIP-46 gateway</span>
+              </div>
               <div className="text-dark-muted text-[11px] font-sans">
-                Serves the NIP-07 management interface for authorized users.
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-1.5">
-              <div className="text-primary-light font-bold flex items-center space-x-1">
-                <Wrench className="w-3.5 h-3.5" />
-                <span>Backend API &amp; NIP-46 Gateway</span>
-              </div>
-              <div className="text-slate-300">api.yourdomain.com</div>
-              <div className="text-dark-muted text-[11px] font-sans">
-                Handles NIP-98 authentication, WebSocket relay connections, and NIP-46 signing requests.
+                A single A-record is all you need. Hosting the API on a separate origin? Build the UI with{' '}
+                <code className="text-slate-300">VITE_API_URL</code>.
               </div>
             </div>
           </div>

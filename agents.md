@@ -27,7 +27,7 @@ This document defines the agentic governance model, domain scopes, file ownershi
 |                       |                                                                           |
 |                       v                                                                           |
 |   +-------------------+-----------------------------------------------------------------------+   |
-|   | Express / Hono App Container (Node.js 22 + SQLite)                                        |   |
+|   | Hono App Container (Node.js 22 + SQLite)                                                  |   |
 |   | - Serves React SPA (TailAdmin Management Dashboard)                                       |   |
 |   | - Handles NIP-98 HTTP Auth Headers & REST API Endpoints                                   |   |
 |   | - Persistent WebSocket pool for relay connections & NIP-46 RPC processing                 |   |
@@ -42,8 +42,8 @@ This document defines the agentic governance model, domain scopes, file ownershi
 
 | Agent Alias | Domain Title | Focus Area | Key Files & Directory Ownership |
 | :--- | :--- | :--- | :--- |
-| **`@agent-arch`** | Architecture Spec | Express/Hono router, SQLite schemas, Bunker service | `packages/app/src/app.ts`, `packages/app/src/db/`, `packages/app/src/services/` |
-| **`@agent-nostr`** | Nostr Protocol Specialist | NIP-46, NIP-07, NIP-44, NIP-98, NIP-01, relay WS pool | `packages/app/src/services/bunker.ts`, `packages/app/src/middleware/auth.ts` |
+| **`@agent-arch`** | Architecture Spec | Hono router, SQLite schemas, Bunker service | `packages/app/src/app.ts`, `packages/app/src/routes/`, `packages/app/src/db/`, `packages/app/src/services/`, `packages/app/src/utils/` |
+| **`@agent-nostr`** | Nostr Protocol Specialist | NIP-46, NIP-07, NIP-44, NIP-98, NIP-01, relay WS pool | `packages/app/src/services/bunker.ts`, `packages/app/src/middleware/nip98.ts` |
 | **`@agent-ui`** | Frontend & TailAdmin Specialist | React SPA, TailAdmin UI components, NIP-07 state, Vite | `packages/ui/` |
 | **`@agent-devops`** | OS & Container Pipeline | Docker, Docker Compose, Caddy, `Makefile`, GitHub Actions | `Dockerfile`, `docker-compose.yml`, `Caddyfile`, `Makefile`, `.github/` |
 
@@ -56,10 +56,12 @@ This document defines the agentic governance model, domain scopes, file ownershi
 - **Primary Goal:** Maintain structural integrity, Node.js 22 runtime efficiency, zero global mutable state, and clean separation between API routing, SQLite storage, and business logic.
 - **Owned Scope:**
   - `packages/app/src/app.ts`
+  - `packages/app/src/routes/api.ts`
   - `packages/app/src/db/index.ts`
   - `packages/app/src/db/migrations.ts`
   - `packages/app/src/services/bunker.ts`
   - `packages/app/src/types/index.ts`
+  - `packages/app/src/utils/logger.ts`
 - **System Instructions & Rules:**
   1. **SQLite Storage Standard:** Use `better-sqlite3` in WAL mode for all persistent data operations (keypairs, connection permissions, audit logs, and profile records).
   2. **Service Layer Isolation:** Maintain business logic inside `BunkerService` with clear dependency injection.
@@ -72,13 +74,13 @@ This document defines the agentic governance model, domain scopes, file ownershi
 - **Primary Goal:** Implement cryptographic precision, NIP spec compliance, secure NIP-46 remote signing, NIP-44 v2 encryption/decryption, and resilient relay pool management.
 - **Owned Scope:**
   - `packages/app/src/services/bunker.ts`
-  - `packages/app/src/middleware/auth.ts`
+  - `packages/app/src/middleware/nip98.ts`
   - Nostr event verification and signature operations
 - **Supported NIPs:**
   - **NIP-01:** Basic Nostr protocol specifications, event structure, and validation.
   - **NIP-07:** Browser extension signer integration for Dashboard authentication.
   - **NIP-44:** Encrypted payloads (v2 spec using Secp256k1 + HKDF + ChaCha20-Poly1305).
-  - **NIP-46:** Remote Signer Protocol (`connect`, `get_public_key`, `sign_event`, `ping`, `encrypt`, `decrypt`).
+  - **NIP-46:** Remote Signer Protocol (`connect`, `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `get_relays`, `describe`, `ping`).
   - **NIP-98:** HTTP Auth Header verification for backend API endpoints.
 - **System Instructions & Rules:**
   1. **Key Security:** Private keys stored in SQLite MUST NEVER be exposed via public HTTP endpoints or emitted in unencrypted log streams.
@@ -116,7 +118,7 @@ This document defines the agentic governance model, domain scopes, file ownershi
   - `DEPLOY.md`, `README.md`
 - **System Instructions & Rules:**
   1. **Node Environment:** Enforce node version verification (`nvm use`) before executing Node processes.
-  2. **Makefile Centralization:** Provide clean Makefile targets: `make install`, `make dev`, `make build`, `make lint`, `make typecheck`, `make test`, `make docker-up`, `make deploy-remote`.
+  2. **Makefile Centralization:** Provide clean Makefile targets: `make install`, `make blackstart`, `make dev`, `make build`, `make lint`, `make typecheck`, `make test`, `make docker-up`, `make install-remote`.
   3. **Production Quality:** Zero warning/error tolerance on `pnpm lint` and `pnpm typecheck`.
 
 ---

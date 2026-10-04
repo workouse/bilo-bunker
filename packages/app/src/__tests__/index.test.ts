@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrations.js';
 import { BunkerService } from '../services/bunker.js';
@@ -48,3 +51,46 @@ describe('Bilo Bunker Health Check', () => {
   });
 });
 
+
+describe('Installer script path (INSTALL_SCRIPT_PATH)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunker-install-'));
+  });
+
+  afterEach(() => {
+    delete process.env['INSTALL_SCRIPT_PATH'];
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('serves the file at INSTALL_SCRIPT_PATH', async () => {
+    const scriptPath = path.join(tmpDir, 'install.sh');
+    fs.writeFileSync(scriptPath, '#!/usr/bin/env bash\necho custom installer\n');
+    process.env['INSTALL_SCRIPT_PATH'] = scriptPath;
+
+    const res = await createApp(bunker, relay).request('/install.sh');
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('echo custom installer');
+  });
+
+  it('returns 404 with an error script when the file is missing', async () => {
+    process.env['INSTALL_SCRIPT_PATH'] = path.join(tmpDir, 'does-not-exist.sh');
+
+    const res = await createApp(bunker, relay).request('/install.sh');
+    expect(res.status).toBe(404);
+    expect(await res.text()).toContain('Installer script not found');
+  });
+
+  it('reads the file once when the app is created', async () => {
+    const scriptPath = path.join(tmpDir, 'install.sh');
+    fs.writeFileSync(scriptPath, '#!/usr/bin/env bash\necho v1\n');
+    process.env['INSTALL_SCRIPT_PATH'] = scriptPath;
+
+    const cachedApp = createApp(bunker, relay);
+    fs.writeFileSync(scriptPath, '#!/usr/bin/env bash\necho v2\n');
+
+    const res = await cachedApp.request('/install.sh');
+    expect(await res.text()).toContain('echo v1');
+  });
+});

@@ -45,7 +45,7 @@ COPY --from=builder /workspace/packages/app/package*.json ./
 COPY --from=builder /workspace/packages/app/dist ./dist
 
 # Copy built UI SPA static assets to /app/public
-COPY --from=builder /workspace/packages/worker/public ./public
+COPY --from=builder /workspace/packages/app/public ./public
 
 # Copy deployment and installer scripts
 COPY --from=builder /workspace/scripts ./scripts
@@ -64,7 +64,8 @@ VOLUME ["/data"]
 # Default environment variables
 ENV NODE_ENV=production \
     PORT=3000 \
-    DB_PATH=/data/bunker.db
+    DB_PATH=/data/bunker.db \
+    INSTALL_SCRIPT_PATH=/app/scripts/install.sh
 
 EXPOSE 3000
 

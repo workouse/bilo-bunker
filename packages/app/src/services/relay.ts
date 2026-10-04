@@ -1,6 +1,9 @@
 import WebSocket from 'ws';
 import type Database from 'better-sqlite3';
 import type { BunkerService } from './bunker.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('relay');
 
 // ── RelayManager ──────────────────────────────────────────────────────────────
 //
@@ -81,9 +84,9 @@ export class RelayManager {
     const urls = this.bunker.getRelayUrls();
 
     if (urls.length === 0) {
-      console.warn('[relay] No relay URLs configured. Set DEFAULT_RELAYS or add a connection.');
+      log.warn('No relay URLs configured. Set DEFAULT_RELAYS or add a connection.');
     } else {
-      console.log(`[relay] Starting — connecting to ${urls.length} relay(s)`);
+      log.info(`Starting — connecting to ${urls.length} relay(s)`);
       for (const url of urls) {
         this.connect(url);
       }
@@ -102,14 +105,14 @@ export class RelayManager {
       .then((discovered) => {
         if (discovered.length > 0) {
           const freshUrls = this.bunker.getRelayUrls();
-          console.log(`[relay] Updating relay pool with ${freshUrls.length} total relay(s)`);
+          log.info(`Updating relay pool with ${freshUrls.length} total relay(s)`);
           for (const url of freshUrls) {
             this.connect(url);
           }
         }
       })
       .catch((err: unknown) => {
-        console.warn('[relay] Background NIP-65 relay discovery warning:', err);
+        log.warn('Background NIP-65 relay discovery warning:', err);
       });
   }
 
@@ -120,7 +123,7 @@ export class RelayManager {
         try {
           ws.ping();
         } catch (err) {
-          console.warn(`[relay] Failed to send ping to ${url}:`, err);
+          log.warn(`Failed to send ping to ${url}:`, err);
         }
       }
     }
@@ -137,8 +140,8 @@ export class RelayManager {
 
     if (!relayUrl.startsWith('ws://') && !relayUrl.startsWith('wss://')) {
       this.disabledRelays.add(relayUrl);
-      console.warn(
-        `[relay] Disabling invalid relay URL (must start with ws:// or wss://): ${relayUrl}`
+      log.warn(
+        `Disabling invalid relay URL (must start with ws:// or wss://): ${relayUrl}`
       );
       return;
     }
@@ -160,7 +163,7 @@ export class RelayManager {
       ws = new WebSocket(relayUrl);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'WebSocket creation error';
-      console.error(`[relay] Failed to create WebSocket for ${relayUrl}:`, msg);
+      log.error(`Failed to create WebSocket for ${relayUrl}:`, msg);
       if (this.isPermanentError(msg)) {
         this.disabledRelays.add(relayUrl);
       } else {
@@ -172,7 +175,7 @@ export class RelayManager {
     ws.on('open', () => {
       this.connections.set(relayUrl, ws);
       this.subscribe(ws);
-      console.log(`[relay] connected: ${relayUrl}`);
+      log.info(`connected: ${relayUrl}`);
 
       // Reset back-off delay and failure count ONLY after staying connected for STABILITY_WINDOW_MS
       const existingTimer = this.stabilityTimers.get(relayUrl);
@@ -189,7 +192,7 @@ export class RelayManager {
 
     ws.on('message', (data) => {
       this.handleMessage(relayUrl, data.toString()).catch((err: unknown) => {
-        console.error(`[relay] handleMessage error on ${relayUrl}:`, err);
+        log.error(`handleMessage error on ${relayUrl}:`, err);
       });
     });
 
@@ -203,20 +206,20 @@ export class RelayManager {
         this.stabilityTimers.delete(relayUrl);
       }
 
-      console.log(
-        `[relay] disconnected: ${relayUrl} (code=${code} reason=${reason.toString() || 'none'})`
+      log.info(
+        `disconnected: ${relayUrl} (code=${code} reason=${reason.toString() || 'none'})`
       );
       this.scheduleReconnect(relayUrl, lastErrorMessage);
     });
 
     ws.on('error', (err) => {
       lastErrorMessage = err ? err.message : 'WebSocket error';
-      console.error(`[relay] error on ${relayUrl}:`, lastErrorMessage);
+      log.error(`error on ${relayUrl}:`, lastErrorMessage);
 
       if (this.isPermanentError(lastErrorMessage)) {
         this.disabledRelays.add(relayUrl);
-        console.warn(
-          `[relay] Disabling autoconnect for permanently unreachable relay: ${relayUrl} (reason: ${lastErrorMessage})`
+        log.warn(
+          `Disabling autoconnect for permanently unreachable relay: ${relayUrl} (reason: ${lastErrorMessage})`
         );
       }
 
@@ -257,8 +260,8 @@ export class RelayManager {
     ];
 
     ws.send(JSON.stringify(req));
-    console.log(
-      `[relay] subscribed to ${pubkeys.length} pubkey(s) (since=${since}) on ${
+    log.info(
+      `subscribed to ${pubkeys.length} pubkey(s) (since=${since}) on ${
         (ws as WebSocket & { url?: string }).url ?? 'unknown'
       }`
     );
@@ -270,13 +273,13 @@ export class RelayManager {
    */
   resubscribeAll(): void {
     const pubkeys = this.bunker.getAllPublicKeys();
-    console.log(`[relay] Resubscribing all open relay connections with ${pubkeys.length} pubkey(s)`);
+    log.info(`Resubscribing all open relay connections with ${pubkeys.length} pubkey(s)`);
     for (const ws of this.connections.values()) {
       if (ws.readyState === WebSocket.OPEN) {
         try {
           this.subscribe(ws);
         } catch (err) {
-          console.warn('[relay] Failed to resubscribe socket:', err);
+          log.warn('Failed to resubscribe socket:', err);
         }
       }
     }
@@ -304,8 +307,8 @@ export class RelayManager {
     if (subId !== SUBSCRIPTION_ID) return;
     if (!event || typeof event !== 'object') return;
 
-    console.log(
-      `[relay] Inbound NIP-46 event (kind ${event['kind']}, id: ${event['id']}) received from ${relayUrl}`
+    log.debug(
+      `Inbound NIP-46 event (kind ${event['kind']}, id: ${event['id']}) received from ${relayUrl}`
     );
 
     const openConnections = Array.from(this.connections.values()).filter(
@@ -313,8 +316,8 @@ export class RelayManager {
     );
 
     if (openConnections.length === 0) {
-      console.warn(
-        `[relay] No open connection available to send NIP-46 response (received on ${relayUrl})`
+      log.warn(
+        `No open connection available to send NIP-46 response (received on ${relayUrl})`
       );
       return;
     }
@@ -329,8 +332,8 @@ export class RelayManager {
             sentCount++;
           }
         }
-        console.log(
-          `[relay] Broadcast NIP-46 response to ${sentCount} open relay socket(s) (inbound from ${relayUrl})`
+        log.debug(
+          `Broadcast NIP-46 response to ${sentCount} open relay socket(s) (inbound from ${relayUrl})`
         );
       },
     } as WebSocket;
@@ -359,8 +362,8 @@ export class RelayManager {
 
     if (errorReason && this.isPermanentError(errorReason)) {
       this.disabledRelays.add(relayUrl);
-      console.warn(
-        `[relay] Disabling autoconnect for permanently unreachable relay: ${relayUrl} (reason: ${errorReason})`
+      log.warn(
+        `Disabling autoconnect for permanently unreachable relay: ${relayUrl} (reason: ${errorReason})`
       );
       return;
     }
@@ -370,8 +373,8 @@ export class RelayManager {
     // Store the next delay so successive failures keep backing off.
     this.reconnectDelay.set(relayUrl, nextDelay);
 
-    console.log(
-      `[relay] reconnecting ${relayUrl} in ${currentDelay / 1_000}s (attempt ${attempts}, next delay: ${nextDelay / 1_000}s)`
+    log.info(
+      `reconnecting ${relayUrl} in ${currentDelay / 1_000}s (attempt ${attempts}, next delay: ${nextDelay / 1_000}s)`
     );
 
     const timer = setTimeout(() => {
@@ -434,7 +437,7 @@ export class RelayManager {
     this.connections.clear();
     this.reconnectDelay.clear();
 
-    console.log('[relay] stopped');
+    log.info('stopped');
   }
 }
 

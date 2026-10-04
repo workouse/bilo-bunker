@@ -87,7 +87,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({ onLaunchDashboard }) =
           </div>
           <div className="p-4 rounded-xl glass-card">
             <div className="text-2xl font-bold text-amber-400 mb-1">1 Command</div>
-            <div className="text-xs text-dark-muted">`make deploy-remote`</div>
+            <div className="text-xs text-dark-muted">`curl … install.sh | bash`</div>
           </div>
         </div>
       </div>

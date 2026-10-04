@@ -25,6 +25,9 @@ import type {
   UserProfile,
 } from '../types/index.js';
 import { getFriendlyOperationLabel } from '../types/index.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('bunker');
 
 // ── BunkerService ─────────────────────────────────────────────────────────────
 //
@@ -67,13 +70,13 @@ export class BunkerService {
       this.ownerPubkey = envKeyPair.publicKey;
       this.mode = 'single_user';
       process.env['OWNER_PUBKEY'] = envKeyPair.publicKey;
-      console.log(`[bunker] Operating in SINGLE USER MODE for owner: ${this.publicKey}`);
+      log.info(`Operating in SINGLE USER MODE for owner: ${this.publicKey}`);
     } else {
       if (parsedOwnerNpub) {
         this.ownerPubkey = parsedOwnerNpub;
         process.env['OWNER_PUBKEY'] = parsedOwnerNpub;
         this.mode = 'multi_user';
-        console.log(`[bunker] Operating in MULTI USER MODE (Owner pubkey: ${parsedOwnerNpub})`);
+        log.info(`Operating in MULTI USER MODE (Owner pubkey: ${parsedOwnerNpub})`);
       } else {
         this.mode = 'multi_user';
       }
@@ -98,7 +101,7 @@ export class BunkerService {
     }
 
     // Log the bunker public key on every boot so operators can verify identity.
-    console.log(`[bunker] public key: ${this.publicKey}`);
+    log.info(`public key: ${this.publicKey}`);
   }
 
   getMode(): 'single_user' | 'multi_user' {
@@ -1068,8 +1071,8 @@ export class BunkerService {
           )
           .run(relayListStr);
       }
-      console.log(
-        `[bunker] Discovered & cached ${discoveredRelays.size} personal user relay(s) from network`
+      log.info(
+        `Discovered & cached ${discoveredRelays.size} personal user relay(s) from network`
       );
     }
 
@@ -1149,13 +1152,13 @@ export class BunkerService {
   async handleNip46Request(event: VerifiedEvent, responseWs: WebSocket): Promise<void> {
     // 1. Kind guard (4 = NIP-04 DM, 104 = legacy, 24133 = NIP-46 ephemeral, 1059 = gift wrap)
     if (![4, 104, 24133, 1059].includes(event.kind)) {
-      console.warn(`[bunker] Ignoring unexpected event kind ${event.kind}`);
+      log.warn(`Ignoring unexpected event kind ${event.kind}`);
       return;
     }
 
     // 2. Signature verification
     if (!verifyEvent(event)) {
-      console.warn('[bunker] Received event with invalid Nostr signature — dropping');
+      log.warn('Received event with invalid Nostr signature — dropping');
       return;
     }
 
@@ -1172,15 +1175,15 @@ export class BunkerService {
     if (profile) {
       const now = Math.floor(Date.now() / 1000);
       if (profile.expiration > 0 && now > profile.expiration) {
-        console.warn(`[bunker] Rejecting request: connection profile '${profile.name}' has expired`);
+        log.warn(`Rejecting request: connection profile '${profile.name}' has expired`);
         return;
       }
 
       if (profile.whitelisted_npub && profile.whitelisted_npub.trim()) {
         const whitelistedHex = parseNpubToHex(profile.whitelisted_npub) || profile.whitelisted_npub.trim().toLowerCase();
         if (whitelistedHex !== event.pubkey.toLowerCase()) {
-          console.warn(
-            `[bunker] Rejecting request: client ${event.pubkey} is not whitelisted on profile '${profile.name}'`
+          log.warn(
+            `Rejecting request: client ${event.pubkey} is not whitelisted on profile '${profile.name}'`
           );
           return;
         }
@@ -1233,7 +1236,7 @@ export class BunkerService {
         }
       }
     } catch (err) {
-      console.error('[bunker] Failed to decrypt NIP-46 payload:', err);
+      log.error('Failed to decrypt NIP-46 payload:', err);
       return;
     }
 
@@ -1242,7 +1245,7 @@ export class BunkerService {
     try {
       payload = JSON.parse(decrypted) as NIP46RequestPayload;
     } catch {
-      console.error('[bunker] NIP-46 payload is not valid JSON — dropping');
+      log.error('NIP-46 payload is not valid JSON — dropping');
       return;
     }
 
@@ -1254,8 +1257,8 @@ export class BunkerService {
       ? (payload as unknown as { req: { params: unknown[] } }).req.params
       : [];
 
-    console.log(
-      `[bunker] Processing NIP-46 method '${method ?? 'unknown'}' (id: ${id}) from client ${clientPubkey} ${
+    log.debug(
+      `Processing NIP-46 method '${method ?? 'unknown'}' (id: ${id}) from client ${clientPubkey} ${
         profile ? `(profile: '${profile.name}')` : ''
       }`
     );
@@ -1385,9 +1388,9 @@ export class BunkerService {
     }
 
     if (rpcError) {
-      console.warn(`[bunker] Method '${method ?? 'unknown'}' failed: ${rpcError}`);
+      log.warn(`Method '${method ?? 'unknown'}' failed: ${rpcError}`);
     } else {
-      console.log(`[bunker] Method '${method}' executed successfully`);
+      log.debug(`Method '${method}' executed successfully`);
     }
 
     // 7. Audit log (always — even for errors)
@@ -1449,7 +1452,7 @@ export class BunkerService {
             ? await nip04EncryptPayload(secretKeyHex, clientPubkey, responseJson)
             : nip44EncryptPayload(secretKeyHex, clientPubkey, responseJson);
       } catch (err) {
-        console.error('[bunker] Failed to encrypt NIP-46 response:', err);
+        log.error('Failed to encrypt NIP-46 response:', err);
         return;
       }
 
