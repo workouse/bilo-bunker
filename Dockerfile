@@ -64,7 +64,8 @@ VOLUME ["/data"]
 # Default environment variables
 ENV NODE_ENV=production \
     PORT=3000 \
-    DB_PATH=/data/bunker.db
+    DB_PATH=/data/bunker.db \
+    INSTALL_SCRIPT_PATH=/app/scripts/install.sh
 
 EXPOSE 3000
 

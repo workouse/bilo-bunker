@@ -119,6 +119,7 @@ If both are set, **`OWNER_NSEC` wins** and the instance runs in single-user mode
 | `PORT` | Node.js application server internal port | No | `3000` |
 | `DB_PATH` | Path to SQLite database file inside container | No | `/data/bunker.db` |
 | `LOG_LEVEL` | Application logging verbosity (`error`, `warn`, `info`, `debug`). Per-request NIP-46 logs only appear at `debug` | No | `info` |
+| `INSTALL_SCRIPT_PATH` | Advanced: path of the installer served at `/install.sh`. Set in the Docker image; defaults to the repo's `scripts/install.sh` otherwise | No | `/app/scripts/install.sh` (Docker) |
 | `PUBLIC_URL` | Public origin the dashboard is served from (e.g. `https://bunker.example.com`). Only needed if your reverse proxy does not forward the `Host` and `X-Forwarded-Proto` headers | No | `""` |
 
 ---
