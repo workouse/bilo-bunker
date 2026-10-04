@@ -7,7 +7,7 @@ set -euo pipefail
 # Usage:
 #   curl -fsSL https://bunker.workouse.com/install.sh | bash
 # Or:
-#   curl -fsSL https://raw.githubusercontent.com/workouse/bilo-bunker/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/workouse/bilo-bunker/master/scripts/install.sh | bash
 # Or locally:
 #   bash scripts/install.sh
 # ─────────────────────────────────────────────────────────────────────────────
