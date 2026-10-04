@@ -118,7 +118,7 @@ If both are set, **`OWNER_NSEC` wins** and the instance runs in single-user mode
 | `DEFAULT_RELAYS` | Comma-separated WebSocket Nostr relays to connect to | No | `wss://relay.damus.io,...` |
 | `PORT` | Node.js application server internal port | No | `3000` |
 | `DB_PATH` | Path to SQLite database file inside container | No | `/data/bunker.db` |
-| `LOG_LEVEL` | Application logging verbosity (`error`, `warn`, `info`, `debug`) | No | `info` |
+| `LOG_LEVEL` | Application logging verbosity (`error`, `warn`, `info`, `debug`). Per-request NIP-46 logs only appear at `debug` | No | `info` |
 | `PUBLIC_URL` | Public origin the dashboard is served from (e.g. `https://bunker.example.com`). Only needed if your reverse proxy does not forward the `Host` and `X-Forwarded-Proto` headers | No | `""` |
 
 ---

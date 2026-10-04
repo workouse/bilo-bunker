@@ -7,6 +7,9 @@ import { db } from './db/index.js';
 import { BunkerService } from './services/bunker.js';
 import { RelayManager } from './services/relay.js';
 import { createApp } from './app.js';
+import { createLogger } from './utils/logger.js';
+
+const log = createLogger('app');
 
 // ── Service instantiation ──────────────────────────────────────────────────────
 // db import triggers runMigrations() synchronously, so the schema is guaranteed
@@ -21,8 +24,8 @@ const port = parseInt(process.env.PORT ?? '3000', 10);
 
 serve({ fetch: app.fetch, port });
 
-console.log(`[app] Bilo Bunker listening on port ${port}`);
-console.log(`[app] Bunker pubkey: ${bunker.getPublicKey()}`);
+log.info(`Bilo Bunker listening on port ${port}`);
+log.info(`Bunker pubkey: ${bunker.getPublicKey()}`);
 
 // ── Relay connections ──────────────────────────────────────────────────────────
 // Start after the HTTP server is up so health checks can pass during the
@@ -33,7 +36,7 @@ await relay.start();
 // Close all relay WebSocket connections cleanly before the process exits.
 // This prevents in-flight NIP-46 responses from being dropped on deploys.
 const shutdown = (): void => {
-  console.log('[app] Shutting down…');
+  log.info('Shutting down…');
   relay.stop();
   process.exit(0);
 };

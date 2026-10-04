@@ -2,6 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { runMigrations } from './migrations.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('db');
 
 /**
  * Resolve path to the SQLite database file.
@@ -14,7 +17,7 @@ function resolveDatabasePath(): string {
       try {
         fs.mkdirSync(path.dirname(customPath), { recursive: true });
       } catch (err) {
-        console.error(`[db] Failed to create parent directory for DB_PATH '${customPath}':`, err);
+        log.error(`Failed to create parent directory for DB_PATH '${customPath}':`, err);
       }
     }
     return customPath;
@@ -44,10 +47,10 @@ const targetPath = resolveDatabasePath();
 let dbInstance: Database.Database;
 try {
   dbInstance = new Database(targetPath);
-  console.log(`[db] Connected to SQLite database at: ${targetPath}`);
+  log.info(`Connected to SQLite database at: ${targetPath}`);
 } catch (err) {
-  console.error(`[db] FATAL: Unable to open SQLite database at '${targetPath}'.`);
-  console.error(`[db] Ensure that the target directory exists and has write permissions for the application user.`);
+  log.error(`FATAL: Unable to open SQLite database at '${targetPath}'.`);
+  log.error(`Ensure that the target directory exists and has write permissions for the application user.`);
   throw err;
 }
 
