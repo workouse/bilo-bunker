@@ -68,4 +68,4 @@ backup:
 	echo "Backup created: backups/bunker_$${TIMESTAMP}.db"
 
 clean:
-	rm -rf node_modules packages/*/node_modules packages/*/dist .wrangler nginx/nginx.conf
+	rm -rf node_modules packages/*/node_modules packages/*/dist packages/app/public packages/worker nginx/nginx.conf

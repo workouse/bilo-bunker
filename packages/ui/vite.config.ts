@@ -17,7 +17,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: '../worker/public',
+    outDir: '../app/public',
     emptyOutDir: true,
   },
 });
