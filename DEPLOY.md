@@ -81,7 +81,7 @@ The setup script (`scripts/blackstart.sh`) will prompt you for:
 
 ## 4. Alternative Deployment: Fly.io
 
-For a managed cloud container deployment without VPS infrastructure, `packages/app` can be deployed directly to [Fly.io](https://fly.io).
+For a managed cloud container deployment without VPS infrastructure, Bilo Bunker can be deployed to [Fly.io](https://fly.io) using the same root `Dockerfile` as the Docker image (backend + dashboard).
 
 ### Step-by-Step Fly.io Deployment
 
@@ -89,17 +89,19 @@ For a managed cloud container deployment without VPS infrastructure, `packages/a
    ```bash
    fly auth login
    ```
-2. **Navigate to the application package**:
-   ```bash
-   cd packages/app
-   ```
-3. **Initialize the Fly app**:
+2. **From the repository root**, initialize the Fly app (Fly picks up the root `Dockerfile`):
    ```bash
    fly launch --no-deploy
    ```
-4. **Create a persistent volume** for SQLite storage:
+3. **Create a persistent volume** for SQLite storage:
    ```bash
    fly volumes create bunker_data --size 1 --region iad
+   ```
+4. **Mount the volume at `/data`** by adding this to the generated `fly.toml` (without it, the database and the bunker keys are lost on every deploy):
+   ```toml
+   [mounts]
+     source = "bunker_data"
+     destination = "/data"
    ```
 5. **Configure environment secrets**:
    ```bash
