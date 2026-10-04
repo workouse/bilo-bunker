@@ -38,7 +38,16 @@ function loadInstallScript(): string | null {
  * Accepts the two service singletons and returns a fully-configured Hono
  * application with no top-level side-effects.
  */
-export function createApp(bunkerService: BunkerService, relayManager: RelayManager): Hono {
+export interface CreateAppOptions {
+  /** Directory with the built dashboard SPA (default ./public, relative to the cwd). */
+  publicDir?: string;
+}
+
+export function createApp(
+  bunkerService: BunkerService,
+  relayManager: RelayManager,
+  options: CreateAppOptions = {}
+): Hono {
   const app = new Hono();
 
   // ── Global middleware ──────────────────────────────────────────────────────
@@ -87,7 +96,7 @@ export function createApp(bunkerService: BunkerService, relayManager: RelayManag
   app.route('/api/v1', createApiRouter(bunkerService, relayManager));
 
   // ── Static SPA Serving (Single Container Mode) ──────────────────────────────
-  const publicDir = './public';
+  const publicDir = options.publicDir ?? './public';
   if (fs.existsSync(publicDir) && fs.existsSync(`${publicDir}/index.html`)) {
     app.use('/*', serveStatic({ root: publicDir }));
     app.get('*', (c, next) => {
