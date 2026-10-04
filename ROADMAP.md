@@ -13,8 +13,8 @@ A single Node.js 22 + Hono process (NIP-46 signer, NIP-98 API and the React dash
 - `LOG_LEVEL` support via a scoped logger (#4)
 - Documented single- vs multi-user modes (#5) and current install commands (#3)
 - Build and repo cleanup: UI build output (#6), unused Dockerfile (#7), installer path (#10), debug tools (#9), outdated planning docs (#8)
+- Test coverage: UI test suite (`getDomainConfig`, `useNostrAuth` NIP-98 signing) and SPA fallback route tests (#11)
 
 ## Next up
 
-- **Test coverage** (#11): UI tests (`useNostrAuth`, `getDomainConfig`) and HTTP route tests (SPA fallback).
 - **API input validation**: `POST /api/v1/bunker/connections` returns `500` instead of `400` when required fields such as `nsec` are missing.
