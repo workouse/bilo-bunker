@@ -28,6 +28,7 @@ Please maintain a respectful, welcoming, and inclusive community environment in 
    ```bash
    make dev
    ```
+   This starts the backend API on `http://localhost:3000` and the Vite UI on `http://localhost:5173` (open this one). Vite proxies `/api` to the backend; point it elsewhere with `VITE_DEV_API_TARGET`.
 
 ---
 
