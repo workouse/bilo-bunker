@@ -74,7 +74,7 @@ make blackstart
 The setup script (`scripts/blackstart.sh`) will prompt you for:
 - **Operating Mode** (Multi-User with optional `OWNER_PUBKEY` vs Single-User with `OWNER_NSEC`; see [Operating Modes](README.md#-operating-modes))
 - **Primary Domain** (`DOMAIN` — e.g. `bunker.example.com` or `localhost`)
-- **Email Address** (`CERTBOT_EMAIL` for TLS certificate registration)
+- **Email Address** (`CERTBOT_EMAIL`: the ACME account email Caddy uses for TLS certificates; the name is historical, no certbot is involved)
 - **Default Relays** (comma-separated `wss://` URLs)
 
 ---

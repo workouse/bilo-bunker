@@ -202,6 +202,7 @@ bilo-bunker/
 
 ## 🤝 Community & Governance
 
+- [Roadmap](ROADMAP.md)
 - [Contributing Guidelines](CONTRIBUTING.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Security Policy](SECURITY.md)
