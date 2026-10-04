@@ -72,7 +72,7 @@ make blackstart
 ```
 
 The setup script (`scripts/blackstart.sh`) will prompt you for:
-- **Operating Mode** (Multi-User with `OWNER_PUBKEY` vs Single-User with `OWNER_NSEC`)
+- **Operating Mode** (Multi-User with optional `OWNER_PUBKEY` vs Single-User with `OWNER_NSEC`; see [Operating Modes](README.md#-operating-modes))
 - **Primary Domain** (`DOMAIN` — e.g. `bunker.example.com` or `localhost`)
 - **Email Address** (`CERTBOT_EMAIL` for TLS certificate registration)
 - **Default Relays** (comma-separated `wss://` URLs)
@@ -103,8 +103,9 @@ For a managed cloud container deployment without VPS infrastructure, `packages/a
    ```
 5. **Configure environment secrets**:
    ```bash
-   fly secrets set OWNER_PUBKEY=your_64_char_hex_pubkey DEFAULT_RELAYS=wss://relay.damus.io,wss://nos.lol
+   fly secrets set OWNER_PUBKEY=npub1yourpublickey DEFAULT_RELAYS=wss://relay.damus.io,wss://nos.lol
    ```
+   For single-user mode set `OWNER_NSEC` instead (see [Operating Modes](README.md#-operating-modes)).
 6. **Deploy**:
    ```bash
    fly deploy
@@ -152,7 +153,8 @@ Produces a clean, transaction-consistent snapshot saved to `./backups/bunker_YYY
 
 | Component | Symptom / Issue | Possible Cause | Resolution |
 |---|---|---|---|
-| **App** | Healthcheck failing (`502 Bad Gateway` or `Connection Refused`) | `OWNER_PUBKEY` variable missing or invalid hex length | Check container logs: `docker compose logs app`. Ensure `.env` contains valid 64-char hex public key for `OWNER_PUBKEY`. |
+| **App** | Healthcheck failing (`502 Bad Gateway` or `Connection Refused`) | App container crashed or is still starting | Check container logs: `docker compose logs app`. |
+| **App** | Wrong operating mode, or owner not recognised | `OWNER_NSEC` set when you meant multi-user (it always wins), or an invalid `OWNER_PUBKEY` / `OWNER_NSEC` value (silently ignored) | Check the startup log line `[bunker] Operating in … MODE`. Keys must be `npub1…`/`nsec1…` or 64-char hex. See [Operating Modes](README.md#-operating-modes). |
 | **Caddy / TLS** | HTTPS certificate errors or TLS challenge timeout | Port 80/443 blocked or DNS A-record not pointing to server IP | Ensure DNS A-record resolves to server IP and inbound ports 80/443 TCP/UDP are open in firewall. Check Caddy logs: `docker compose logs caddy`. |
 | **Dashboard** | Logged in, but keypair stays on "Generating...", no QR code, new connections don't appear (API returns `401 NIP-98 URL mismatch`) | A custom reverse proxy (e.g. Nginx Proxy Manager) terminates TLS but the app sees `http://` or a different host | Make the proxy forward the `Host` header and set `X-Forwarded-Proto`, or set `PUBLIC_URL=https://your.domain` in the app environment. |
 | **Relay** | NIP-46 signing requests timed out | Outbound WebSocket connection failure or unreachable relay | View logs: `docker compose logs app \| grep "\[relay\]"`. Verify relay URLs start with `wss://`. |
